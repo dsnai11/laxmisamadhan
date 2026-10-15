@@ -39,24 +39,71 @@ jobs:
         working-directory: frontend
         run: npx cap sync ios
 
-      - name: Build iOS App using Xcode
+      - name: Install CocoaPods Dependencies (if Podfile exists)
         working-directory: frontend/ios/App
         run: |
-          xcodebuild -workspace App.xcworkspace \
-                     -scheme App \
-                     -configuration Release \
-                     -destination 'generic/platform=iOS' \
-                     -archivePath App.xcarchive \
-                     archive \
-                     CODE_SIGNING_ALLOWED=NO \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGN_IDENTITY=""
+          set -e
+          if [ -f Podfile ]; then
+            if ! command -v pod >/dev/null 2>&1; then
+              gem install cocoapods --no-document || brew install cocoapods
+            fi
+            pod install --repo-update
+          else
+            echo "No Podfile found; skipping pod install"
+          fi
 
-      - name: Package App into IPA (Payload Archive)
+      - name: Build & Package iOS App into IPA
         working-directory: frontend/ios/App
         run: |
+          set -euo pipefail
+          echo "Working dir: $(pwd)"
+          ls -la
+
+          # Choose workspace or project
+          if [ -f App.xcworkspace ]; then
+            WORKSPACE="App.xcworkspace"
+            SCHEME="App"
+            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
+          elif ls *.xcworkspace 1> /dev/null 2>&1; then
+            WORKSPACE=$(ls *.xcworkspace | head -n1)
+            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
+          elif [ -f App.xcodeproj ]; then
+            PROJECT="App.xcodeproj"
+            SCHEME="App"
+            BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
+          elif ls *.xcodeproj 1> /dev/null 2>&1; then
+            PROJECT=$(ls *.xcodeproj | head -n1)
+            SCHEME=$(basename "$PROJECT" .xcodeproj)
+            BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
+          else
+            echo "No .xcworkspace or .xcodeproj found in $(pwd)" >&2
+            ls -la
+            exit 1
+          fi
+
+          echo "Using build target: ${BUILD_CMD[*]}"
+          "${BUILD_CMD[@]}" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath App.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+          # Package into .ipa using whatever .app was produced
+          APP_PATH=$(find App.xcarchive/Products/Applications -name "*.app" -maxdepth 2 | head -n1 || true)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found under App.xcarchive/Products/Applications" >&2
+            ls -R App.xcarchive || true
+            exit 1
+          fi
+
+          echo "Found app: $APP_PATH"
+          rm -rf Payload
           mkdir -p Payload
-          cp -r App.xcarchive/Products/Applications/App.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r LaxmiSamadhan.ipa Payload/
 
       - name: Upload iOS IPA Artifact
