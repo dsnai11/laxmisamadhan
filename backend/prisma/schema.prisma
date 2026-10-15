@@ -1,0 +1,660 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  DEPARTMENT_HEAD
+  TEAM_LEAD
+  AGENT
+  RAISER
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  ON_HOLD
+  PENDING_APPROVAL
+  PENDING_USER
+  RESOLVED
+  CLOSED
+  REOPENED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+  URGENT
+}
+
+enum TicketCategory {
+  INCIDENT
+  SERVICE_REQUEST
+  CHANGE_REQUEST
+  PROBLEM
+  ACCESS_REQUEST
+  HARDWARE_REQUEST
+  SOFTWARE_REQUEST
+  SECURITY_INCIDENT
+  AI_MODEL_REQUEST
+  DATA_REQUEST
+}
+
+enum SLAStatus {
+  WITHIN_SLA
+  APPROACHING_BREACH
+  BREACHED
+  PAUSED
+}
+
+enum NotificationType {
+  TICKET_CREATED
+  TICKET_ASSIGNED
+  TICKET_UPDATED
+  TICKET_COMMENTED
+  TICKET_RESOLVED
+  TICKET_CLOSED
+  TICKET_REOPENED
+  TICKET_ESCALATED
+  SLA_WARNING
+  SLA_BREACHED
+  APPROVAL_REQUESTED
+  APPROVAL_GRANTED
+  APPROVAL_DENIED
+  MENTION
+  SYSTEM_ALERT
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum AssetType {
+  LAPTOP
+  DESKTOP
+  MONITOR
+  PHONE
+  TABLET
+  SERVER
+  NETWORK_DEVICE
+  PERIPHERAL
+  SOFTWARE_LICENSE
+  AI_MODEL
+  OTHER
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  phone             String?
+  mobile            String?
+  employeeId        String?
+  jobTitle          String?
+  site              String?
+  reportingManagerName String?
+  avatar            String?
+  role              UserRole   @default(RAISER)
+  roles             UserRole[] @default([])
+  status            UserStatus @default(PENDING_VERIFICATION)
+  mfaEnabled        Boolean   @default(false)
+  mfaSecret         String?
+  backupCodes       String[]
+  lastLoginAt       DateTime?
+  lastPasswordChange DateTime?
+  failedLoginAttempts Int      @default(0)
+  lockedUntil       DateTime?
+  emailVerified     Boolean   @default(false)
+  emailVerifyToken  String?
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  departmentId      String?
+  department        Department? @relation("UserDepartment", fields: [departmentId], references: [id])
+  managerId         String?
+  manager           User?     @relation("UserManager", fields: [managerId], references: [id])
+  subordinates      User[]    @relation("UserManager")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  createdById       String?
+  createdBy         User?     @relation("UserCreator", fields: [createdById], references: [id])
+  createdUsers      User[]    @relation("UserCreator")
+  ticketsRaised     Ticket[]  @relation("TicketRaiser")
+  ticketsAssigned   Ticket[]  @relation("TicketAssignee")
+  ticketsAssignedBy Ticket[]  @relation("TicketAssigner")
+  ticketWatchers    TicketWatcher[] @relation("TicketWatcherUser")
+  ticketsUpdated    TicketUpdate[]
+  comments          Comment[]
+  attachments       Attachment[]
+  notifications     Notification[]
+  approvalsAsApprover Approval[] @relation("ApprovalApprover")
+  approvalsAsRequester Approval[] @relation("ApprovalRequester")
+  activities        ActivityLog[]
+  sessions          Session[]
+  assets            Asset[]   @relation("AssetAssignee")
+  knowledgeArticles KnowledgeArticle[] @relation("ArticleAuthor")
+  articleReviews    KnowledgeArticleReview[]
+  slaPolicies       SLAPolicy[] @relation("SLAPolicyCreator")
+  customFields      CustomFieldValue[]
+  departmentHeaded  Department[] @relation("DepartmentHead")
+  teamsLed          Team[]    @relation("TeamLead")
+  teamMemberships   Team[]    @relation("TeamMember")
+  acknowledgedSlaEvents SLAEvent[] @relation("SLAEventAcknowledgedBy")
+
+  @@index([email])
+  @@index([departmentId])
+  @@index([role])
+  @@index([status])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  refreshToken String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  @@index([userId])
+  @@index([token])
+  @@index([refreshToken])
+}
+
+model Department {
+  id              String         @id @default(uuid())
+  name            String         @unique
+  type            String         @default("GENERAL")
+  description     String?
+  color           String         @default("#3B82F6")
+  icon            String?
+  parentId        String?
+  parent          Department?    @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children        Department[]   @relation("DepartmentHierarchy")
+  headId          String?
+  head            User?          @relation("DepartmentHead", fields: [headId], references: [id])
+  slaPolicyId     String?
+  slaPolicy       SLAPolicy?     @relation("DepartmentDefaultSlaPolicy", fields: [slaPolicyId], references: [id])
+  autoAssign      Boolean        @default(false)
+  assignStrategy  String?        @default("round_robin")
+  businessHours   Json?
+  escalationRules Json?
+  supportEmail    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  users           User[]         @relation("UserDepartment")
+  tickets         Ticket[]
+  categories      TicketCategoryConfig[]
+  assets          Asset[]
+  knowledgeBases  KnowledgeBase[]
+  teams           Team[]         @relation("TeamDepartment")
+  slaPolicies     SLAPolicy[]    @relation("DepartmentSlaPolicy")
+  customFields    CustomField[]  @relation("CustomFieldDepartment")
+
+  @@index([type])
+  @@index([parentId])
+}
+
+model TicketCategoryConfig {
+  id            String        @id @default(uuid())
+  departmentId  String
+  department    Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  category      TicketCategory
+  isActive      Boolean       @default(true)
+  defaultPriority TicketPriority @default(MEDIUM)
+  slaPolicyId   String?
+  slaPolicy     SLAPolicy?    @relation(fields: [slaPolicyId], references: [id])
+  formFields    Json?
+  approvalFlow  Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([departmentId, category])
+}
+
+model Ticket {
+  id              String        @id @default(uuid())
+  ticketNumber    String        @unique
+  title           String
+  description     String
+  status          TicketStatus  @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  category        TicketCategory
+  subCategory     String?
+  subIssue        String?
+  item            String?
+  group           String?       @default("Vendor Support-FMS")
+  site            String?
+  departmentId    String
+  department      Department    @relation(fields: [departmentId], references: [id])
+  raisedById      String
+  raisedBy        User          @relation("TicketRaiser", fields: [raisedById], references: [id])
+  assignedToId    String?
+  assignedTo      User?         @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  assignedAt      DateTime?
+  assignedById    String?
+  assignedBy      User?         @relation("TicketAssigner", fields: [assignedById], references: [id])
+  teamId          String?
+  team            Team?         @relation(fields: [teamId], references: [id])
+  parentTicketId  String?
+  parentTicket    Ticket?       @relation("TicketHierarchy", fields: [parentTicketId], references: [id])
+  childTickets    Ticket[]      @relation("TicketHierarchy")
+  relatedTickets  Ticket[]      @relation("TicketRelations")
+  relatedTo       Ticket[]      @relation("TicketRelations")
+  slaPolicyId     String?
+  slaPolicy       SLAPolicy?    @relation(fields: [slaPolicyId], references: [id])
+  slaStatus       SLAStatus     @default(WITHIN_SLA)
+  responseDueAt   DateTime?
+  resolutionDueAt DateTime?
+  respondedAt     DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  resolution      String?
+  resolutionSummary String?
+  reopenedCount   Int           @default(0)
+  tags            String[]
+  customFields    Json?
+  satisfactionRating Int?
+  satisfactionFeedback String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  updates         TicketUpdate[]
+  comments        Comment[]
+  attachments     Attachment[]
+  approvals       Approval[]
+  activities      ActivityLog[]
+  slaEvents       SLAEvent[]
+  assets          Asset[]       @relation("AssetTickets")
+  customFieldValues CustomFieldValue[] @relation("CustomFieldValueTicket")
+  watchers        TicketWatcher[]
+
+  @@index([ticketNumber])
+  @@index([departmentId])
+  @@index([raisedById])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([createdAt])
+  @@index([slaStatus])
+}
+
+model TicketUpdate {
+  id          String   @id @default(uuid())
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  field       String
+  oldValue    String?
+  newValue    String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  content     String
+  isInternal  Boolean  @default(false)
+  isSystem    Boolean  @default(false)
+  parentId    String?
+  parent      Comment? @relation("CommentThread", fields: [parentId], references: [id])
+  replies     Comment[] @relation("CommentThread")
+  mentions    String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  attachments Attachment[] @relation("CommentAttachments")
+
+  @@index([ticketId])
+  @@index([userId])
+  @@index([parentId])
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  ticketId    String?
+  ticket      Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  commentId   String?
+  comment     Comment? @relation("CommentAttachments", fields: [commentId], references: [id], onDelete: Cascade)
+  articleId   String?
+  article     KnowledgeArticle? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  fileName    String
+  originalName String
+  mimeType    String
+  size        Int
+  path        String
+  url         String?
+  checksum    String
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([commentId])
+  @@index([articleId])
+  @@index([userId])
+}
+
+model TicketWatcher {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("TicketWatcherUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([ticketId, userId])
+  @@index([userId])
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  departmentId String
+  department  Department @relation("TeamDepartment", fields: [departmentId], references: [id], onDelete: Cascade)
+  leadId      String?
+  lead        User?    @relation("TeamLead", fields: [leadId], references: [id])
+  members     User[]   @relation("TeamMember")
+  tickets     Ticket[]
+  supportEmail String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([departmentId])
+}
+
+model SLAPolicy {
+  id                String   @id @default(uuid())
+  name              String   @unique
+  description       String?
+  departmentId      String?
+  department        Department? @relation("DepartmentSlaPolicy", fields: [departmentId], references: [id])
+  defaultForDepartments Department[] @relation("DepartmentDefaultSlaPolicy")
+  category          TicketCategory?
+  priority          TicketPriority
+  responseTimeMins  Int
+  resolutionTimeMins Int
+  businessHoursOnly Boolean  @default(true)
+  excludesWeekends  Boolean  @default(true)
+  holidays          Json?
+  escalationRules   Json?
+  isActive          Boolean  @default(true)
+  createdById       String
+  createdBy         User     @relation("SLAPolicyCreator", fields: [createdById], references: [id])
+  tickets           Ticket[]
+  categoryConfigs   TicketCategoryConfig[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([departmentId])
+  @@index([priority])
+  @@index([category])
+}
+
+model SLAEvent {
+  id            String     @id @default(uuid())
+  ticketId      String
+  ticket        Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  eventType     String
+  description   String
+  triggerTime   DateTime
+  acknowledgedAt DateTime?
+  acknowledgedById String?
+  acknowledgedBy User?    @relation("SLAEventAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  createdAt     DateTime   @default(now())
+
+  @@index([ticketId])
+  @@index([eventType])
+}
+
+model Approval {
+  id              String         @id @default(uuid())
+  ticketId        String
+  ticket          Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  requesterId     String
+  requester       User           @relation("ApprovalRequester", fields: [requesterId], references: [id])
+  approverId      String
+  approver        User           @relation("ApprovalApprover", fields: [approverId], references: [id])
+  title           String
+  description     String
+  status          ApprovalStatus @default(PENDING)
+  response        String?
+  respondedAt     DateTime?
+  expiresAt       DateTime?
+  level           Int            @default(1)
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([ticketId])
+  @@index([approverId])
+  @@index([status])
+}
+
+model Notification {
+  id          String            @id @default(uuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  message     String
+  referenceId String?
+  referenceType String?
+  isRead      Boolean           @default(false)
+  readAt      DateTime?
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  ticketId    String?
+  ticket      Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  action      String
+  description String
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Asset {
+  id              String     @id @default(uuid())
+  assetTag        String     @unique
+  name            String
+  type            AssetType
+  serialNumber    String?
+  model           String?
+  manufacturer    String?
+  departmentId    String
+  department      Department @relation(fields: [departmentId], references: [id])
+  assignedToId    String?
+  assignedTo      User?      @relation("AssetAssignee", fields: [assignedToId], references: [id])
+  location        String?
+  purchaseDate    DateTime?
+  warrantyExpiry  DateTime?
+  status          String     @default("AVAILABLE")
+  value           Float?
+  currency        String     @default("USD")
+  specifications  Json?
+  tickets         Ticket[]   @relation("AssetTickets")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([assetTag])
+  @@index([departmentId])
+  @@index([assignedToId])
+  @@index([type])
+  @@index([status])
+}
+
+model KnowledgeBase {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  departmentId String
+  department  Department @relation(fields: [departmentId], references: [id])
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  articles    KnowledgeArticle[]
+
+  @@index([departmentId])
+}
+
+model KnowledgeArticle {
+  id              String   @id @default(uuid())
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  title           String
+  slug            String
+  content         String
+  excerpt         String?
+  category        String?
+  tags            String[]
+  authorId        String
+  author          User     @relation("ArticleAuthor", fields: [authorId], references: [id])
+  status          String   @default("DRAFT")
+  viewCount       Int      @default(0)
+  helpfulCount    Int      @default(0)
+  notHelpfulCount Int      @default(0)
+  publishedAt     DateTime?
+  attachments     Attachment[]
+  reviews         KnowledgeArticleReview[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([knowledgeBaseId, slug])
+  @@index([authorId])
+  @@index([status])
+  @@index([category])
+}
+
+model KnowledgeArticleReview {
+  id        String   @id @default(uuid())
+  articleId String
+  article   KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  rating    Int
+  feedback  String?
+  createdAt DateTime @default(now())
+
+  @@unique([articleId, userId])
+}
+
+model CustomField {
+  id          String   @id @default(uuid())
+  name        String
+  label       String
+  type        String
+  departmentId String?
+  department  Department? @relation("CustomFieldDepartment", fields: [departmentId], references: [id])
+  category    TicketCategory?
+  isRequired  Boolean  @default(false)
+  options     Json?
+  validation  Json?
+  defaultValue Json?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  values      CustomFieldValue[]
+
+  @@index([departmentId])
+  @@index([category])
+}
+
+model CustomFieldValue {
+  id            String       @id @default(uuid())
+  fieldId       String
+  field         CustomField  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  ticketId      String?
+  ticket        Ticket?      @relation("CustomFieldValueTicket", fields: [ticketId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  value         Json
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([fieldId])
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  category  String
+  description String?
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  resource    String
+  resourceId  String?
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  success     Boolean  @default(true)
+  errorMessage String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([resource])
+  @@index([resourceId])
+  @@index([createdAt])
+}

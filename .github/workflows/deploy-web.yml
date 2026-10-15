@@ -1,0 +1,45 @@
+name: Deploy Web to EC2
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Web Application to AWS EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "Starting deployment on EC2..."
+            
+            # Navigate to deployment directory
+            cd /var/www/laxmisamadhan
+            
+            # Pull latest changes if git repo exists, or verify directory
+            if [ -d .git ]; then
+              git pull origin main || git pull origin master
+            fi
+            
+            # Restart backend
+            pm2 restart ticket-backend || true
+            
+            # Reload Nginx
+            sudo systemctl reload nginx
+            
+            echo "Deployment successfully completed!"
