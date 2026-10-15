@@ -1,13 +1,36 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { TokenPair, ApiResponse, LoginCredentials, RegisterData, User, Ticket, Department, Team, SLAPolicy, Asset, KnowledgeBase, KnowledgeArticle, CustomField, Approval, Notification, PaginatedResponse } from '@types';
-
+import { Capacitor } from '@capacitor/core';
 
 function toPage<T>(raw: any, key: string): PaginatedResponse<T> & Record<string, any> {
   const items = (raw && (raw[key] ?? raw.data)) || [];
   return { ...raw, data: items, total: raw?.total ?? items.length, page: raw?.page ?? 1, totalPages: raw?.totalPages ?? 1 };
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+export const PRODUCTION_ORIGIN = 'https://laxmisamadhan.lifc.in';
+export const PRODUCTION_API_URL = `${PRODUCTION_ORIGIN}/api/v1`;
+
+export function getApiBaseUrl(): string {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) {
+    return envUrl;
+  }
+  
+  if (
+    Capacitor.isNativePlatform() ||
+    (typeof window !== 'undefined' && (
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'ionic:' ||
+      (window.location.hostname === 'localhost' && ((window as any).Capacitor || window.location.origin.includes('capacitor')))
+    ))
+  ) {
+    return PRODUCTION_API_URL;
+  }
+
+  return envUrl || '/api/v1';
+}
+
+const API_URL = getApiBaseUrl();
 
 class ApiService {
   private client: AxiosInstance;
@@ -36,9 +59,11 @@ class ApiService {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+        const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
+        const requestUrl = originalRequest?.url || '';
+        const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/register');
         
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
           originalRequest._retry = true;
           
           try {
@@ -61,12 +86,20 @@ class ApiService {
 
   clearAuth(): void {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
   }
 
   private setAuth(tokens: TokenPair, user: User): void {
-    localStorage.setItem('accessToken', tokens.accessToken);
-    localStorage.setItem('user', JSON.stringify(user));
+    if (tokens?.accessToken) {
+      localStorage.setItem('accessToken', tokens.accessToken);
+    }
+    if (tokens?.refreshToken) {
+      localStorage.setItem('refreshToken', tokens.refreshToken);
+    }
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    }
   }
 
   getAccessToken(): string | null {
@@ -84,14 +117,30 @@ class ApiService {
 
   async login(credentials: LoginCredentials): Promise<{ user: User; tokens: TokenPair }> {
     const response = await this.client.post<ApiResponse<{ user: User; tokens: TokenPair }>>('/auth/login', credentials);
-    const { user, tokens } = response.data.data!;
+    const resData = response.data;
+    if (!resData || typeof resData !== 'object' || !resData.data) {
+      const errMsg = (resData as any)?.error || (resData as any)?.message || 'Unable to connect to the authentication service. Please check your network connection.';
+      throw new Error(errMsg);
+    }
+    const { user, tokens } = resData.data;
+    if (!user || !tokens) {
+      throw new Error('Authentication response did not contain valid user session data.');
+    }
     this.setAuth(tokens, user);
     return { user, tokens };
   }
 
   async register(data: RegisterData): Promise<{ user: User; tokens: TokenPair }> {
     const response = await this.client.post<ApiResponse<{ user: User; tokens: TokenPair }>>('/auth/register', data);
-    const { user, tokens } = response.data.data!;
+    const resData = response.data;
+    if (!resData || typeof resData !== 'object' || !resData.data) {
+      const errMsg = (resData as any)?.error || (resData as any)?.message || 'Registration failed.';
+      throw new Error(errMsg);
+    }
+    const { user, tokens } = resData.data;
+    if (!user || !tokens) {
+      throw new Error('Registration response did not contain user session data.');
+    }
     this.setAuth(tokens, user);
     return { user, tokens };
   }
@@ -110,9 +159,18 @@ class ApiService {
     }
 
     this.refreshPromise = (async () => {
-      const response = await this.client.post<ApiResponse<TokenPair>>('/auth/refresh');
-      const tokens = response.data.data!;
+      const storedRefreshToken = localStorage.getItem('refreshToken');
+      const response = await this.client.post<ApiResponse<TokenPair>>('/auth/refresh', {
+        refreshToken: storedRefreshToken || undefined,
+      });
+      const tokens = response.data?.data;
+      if (!tokens?.accessToken) {
+        throw new Error('Failed to refresh authentication session');
+      }
       localStorage.setItem('accessToken', tokens.accessToken);
+      if (tokens.refreshToken) {
+        localStorage.setItem('refreshToken', tokens.refreshToken);
+      }
       return tokens;
     })();
 

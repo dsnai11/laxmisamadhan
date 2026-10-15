@@ -3,7 +3,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { EnvelopeIcon, LockClosedIcon, EyeIcon, EyeSlashIcon, ShieldCheckIcon, SparklesIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { 
+  EnvelopeIcon, 
+  LockClosedIcon, 
+  EyeIcon, 
+  EyeSlashIcon, 
+  ShieldCheckIcon, 
+  SparklesIcon, 
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  UserPlusIcon
+} from '@heroicons/react/24/outline';
 import { useAuth } from '@context/AuthContext';
 import toast from 'react-hot-toast';
 import { cn } from '@utils/helpers';
@@ -24,6 +34,7 @@ export default function LoginPage() {
   const [showMFA, setShowMFA] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [accountNotCreated, setAccountNotCreated] = useState<boolean>(false);
 
   const {
     register,
@@ -38,6 +49,7 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     setLoginError(null);
+    setAccountNotCreated(false);
     try {
       await login(data.email, data.password, data.mfaCode, data.rememberMe);
       toast.success('Welcome back to Laxmi India Finance IT Portal');
@@ -47,9 +59,24 @@ export default function LoginPage() {
         setShowMFA(true);
         setValue('mfaCode', '');
       } else {
-        const errorMsg = error.response?.data?.error || error.message || 'Login failed. Please check your credentials.';
-        setLoginError(errorMsg);
-        toast.error(errorMsg);
+        const errorData = error.response?.data;
+        const errorMsg = errorData?.error || errorData?.message || error.message || 'Login failed. Please check your credentials.';
+        const isNotCreated = 
+          errorData?.code === 'ACCOUNT_NOT_FOUND' || 
+          error.response?.status === 404 ||
+          errorMsg.toLowerCase().includes('not been created') || 
+          errorMsg.toLowerCase().includes('account not found') ||
+          errorMsg.toLowerCase().includes('id has not');
+
+        if (isNotCreated) {
+          setAccountNotCreated(true);
+          setLoginError('Your corporate account / ID has not been created in the system yet. Please contact your IT Administrator or HR Department to create your profile.');
+          toast.error('Account ID not registered yet');
+        } else {
+          setAccountNotCreated(false);
+          setLoginError(errorMsg);
+          toast.error(errorMsg);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -91,14 +118,48 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {loginError && (
+          {accountNotCreated ? (
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800/80 shadow-sm space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5">
+                  <UserPlusIcon className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                    Account ID Not Registered
+                  </h3>
+                  <p className="text-xs text-amber-800/90 dark:text-amber-300/90 leading-relaxed font-medium">
+                    Your corporate email or employee ID has not been created on the Laxmi Samadhan portal yet.
+                  </p>
+                </div>
+              </div>
+              <div className="bg-white/90 dark:bg-slate-900/90 rounded-xl p-3 border border-amber-200 dark:border-amber-900/50 text-xs space-y-2">
+                <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <InformationCircleIcon className="w-4 h-4 text-amber-600" />
+                  <span>How to get your account created:</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 pl-1 leading-relaxed">
+                  Please reach out to your <strong>HR Department</strong> or <strong>IT Helpdesk Administrator</strong> with your official employee code to have your portal access provisioned.
+                </p>
+                <div className="pt-1">
+                  <a
+                    href="mailto:it@laxmi.com?subject=Account%20Creation%20Request%20-%20Laxmi%20Samadhan"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-semibold text-xs shadow-sm transition-all"
+                  >
+                    <EnvelopeIcon className="w-3.5 h-3.5" />
+                    Contact IT Helpdesk
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : loginError ? (
             <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start gap-3">
               <ExclamationTriangleIcon className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
               <div className="text-xs text-red-700 dark:text-red-300 leading-relaxed font-medium">
                 {loginError}
               </div>
             </div>
-          )}
+          ) : null}
 
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
             <div>
@@ -232,6 +293,18 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <div className="pt-2 border-t border-gray-100 dark:border-slate-800 text-center">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              Don't have an ID yet? Accounts are provisioned by IT & HR Administration.{' '}
+              <a
+                href="mailto:it@laxmi.com?subject=New%20User%20Access%20Request%20-%20Laxmi%20Samadhan"
+                className="font-semibold text-red-600 hover:text-red-700 dark:text-red-400 inline-flex items-center gap-1"
+              >
+                Request Access
+              </a>
+            </p>
+          </div>
         </div>
 
         {/* Footer info */}

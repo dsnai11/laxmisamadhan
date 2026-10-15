@@ -7,6 +7,11 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
     cleartext: true,
+    allowNavigation: [
+      'laxmisamadhan.lifc.in',
+      '*.lifc.in',
+      '65.2.215.48'
+    ],
   },
   plugins: {
     SplashScreen: {
