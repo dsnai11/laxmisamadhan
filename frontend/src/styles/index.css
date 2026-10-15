@@ -286,3 +286,16 @@
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Mobile Safe Area Inset Support (Dynamic Island / iPhone Notch / Bottom Home Indicator) */
+.header-safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+
+.mobile-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+
+.sidebar-safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}

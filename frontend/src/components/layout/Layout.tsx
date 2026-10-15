@@ -188,7 +188,7 @@ export default function Layout() {
       {/* Main content */}
       <div className="lg:pl-64 flex flex-col min-h-screen w-full min-w-0">
         {/* Top header */}
-        <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-colors">
+        <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-colors header-safe-top pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center justify-between h-16 px-3 sm:px-6 gap-2">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
@@ -243,7 +243,7 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden">
+        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden mobile-safe-bottom pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
           <Outlet />
         </main>
       </div>
@@ -255,7 +255,7 @@ function SidebarContent({ navItems, portalName, onNavigate }: { navItems: any[];
   const { user } = useAuth();
   
   return (
-    <div className="flex flex-col flex-1 h-full min-h-0 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transition-colors">
+    <div className="flex flex-col flex-1 h-full min-h-0 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transition-colors sidebar-safe-top pt-[env(safe-area-inset-top,0px)] mobile-safe-bottom pb-[env(safe-area-inset-bottom,0px)]">
       <div className="flex items-center gap-3 h-16 px-4 border-b border-gray-200 dark:border-slate-800 shrink-0">
         <img src="/logo.jpg" alt="Laxmi India Finance Ltd" className="h-10 w-10 rounded-lg object-cover shrink-0 border border-gray-200 dark:border-slate-700" />
         <div className="min-w-0">

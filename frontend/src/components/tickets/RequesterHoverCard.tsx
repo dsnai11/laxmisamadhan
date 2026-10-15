@@ -25,6 +25,20 @@ export default function RequesterHoverCard({ user, departmentName, triggerElemen
   const dept = user.department?.name || departmentName || 'CREDIT-1901';
   const reportingManager = user.reportingManagerName || 'KARAN KUMAR';
 
+  const handlePhoneClick = (phoneNumber: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobileDevice) {
+      window.location.href = `tel:${phoneNumber}`;
+    } else {
+      navigator.clipboard.writeText(phoneNumber);
+      toast.success(`Copied phone number (${phoneNumber}) to clipboard`);
+    }
+  };
+
   const cardContent = (
     <div className="bg-white rounded-2xl shadow-2xl border border-blue-100 p-4 w-80 text-xs space-y-3 z-50 text-gray-800 animate-fadeIn">
       {/* Header Profile */}
@@ -70,16 +84,26 @@ export default function RequesterHoverCard({ user, departmentName, triggerElemen
 
           <div className="grid grid-cols-5 gap-1">
             <span className="text-gray-500 col-span-2">Phone</span>
-            <a href={`tel:${phone}`} className="font-semibold text-blue-700 hover:underline col-span-3">
+            <button
+              type="button"
+              onClick={(e) => handlePhoneClick(phone, e)}
+              className="font-semibold text-blue-700 hover:underline col-span-3 text-left cursor-pointer truncate"
+              title="Click to copy phone number"
+            >
               {phone}
-            </a>
+            </button>
           </div>
 
           <div className="grid grid-cols-5 gap-1">
             <span className="text-gray-500 col-span-2">Mobile</span>
-            <a href={`tel:${mobile}`} className="font-semibold text-blue-700 hover:underline col-span-3">
+            <button
+              type="button"
+              onClick={(e) => handlePhoneClick(mobile, e)}
+              className="font-semibold text-blue-700 hover:underline col-span-3 text-left cursor-pointer truncate"
+              title="Click to copy phone number"
+            >
               {mobile}
-            </a>
+            </button>
           </div>
 
           <div className="grid grid-cols-5 gap-1">

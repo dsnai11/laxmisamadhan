@@ -26,6 +26,20 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
     toast.success(`Copied ${label} to clipboard`);
   };
 
+  const handlePhoneClick = (phone: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobileDevice) {
+      window.location.href = `tel:${phone}`;
+    } else {
+      navigator.clipboard.writeText(phone);
+      toast.success(`Copied phone number (${phone}) to clipboard`);
+    }
+  };
+
   // If viewed on agent profile and ticket is assigned, display Ticket Assigned By
   if (isAgentOrStaff) {
     const isAutoAssigned = !assigner && !!assignee;
@@ -112,13 +126,14 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
               {assignerPhone && (
                 <div className="flex items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-slate-700 shadow-2xs gap-2">
                   <PhoneIcon className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <a
-                    href={`tel:${assignerPhone}`}
-                    className="text-xs font-semibold text-gray-800 dark:text-slate-200 hover:text-indigo-600 transition-colors"
-                    title="Call Assigner"
+                  <button
+                    type="button"
+                    onClick={(e) => handlePhoneClick(assignerPhone, e)}
+                    className="text-xs font-semibold text-gray-800 dark:text-slate-200 hover:text-indigo-600 transition-colors cursor-pointer text-left"
+                    title="Click to copy phone number"
                   >
                     {assignerPhone}
-                  </a>
+                  </button>
                   <button
                     type="button"
                     onClick={() => copyToClipboard(assignerPhone, 'phone number')}
@@ -230,13 +245,14 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
             {/* Phone Pill */}
             <div className="flex items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-slate-700 shadow-2xs gap-2">
               <PhoneIcon className="h-4 w-4 text-emerald-600 shrink-0" />
-              <a
-                href={`tel:${assigneePhone}`}
-                className="text-xs font-semibold text-gray-800 dark:text-slate-200 hover:text-blue-600 transition-colors"
-                title="Call Agent"
+              <button
+                type="button"
+                onClick={(e) => handlePhoneClick(assigneePhone, e)}
+                className="text-xs font-semibold text-gray-800 dark:text-slate-200 hover:text-blue-600 transition-colors cursor-pointer text-left"
+                title="Click to copy phone number"
               >
                 {assigneePhone}
-              </a>
+              </button>
               <button
                 type="button"
                 onClick={() => copyToClipboard(assigneePhone, 'phone number')}
