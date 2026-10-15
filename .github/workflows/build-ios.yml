@@ -59,21 +59,21 @@ jobs:
           echo "Working dir: $(pwd)"
           ls -la
 
-          # Choose workspace or project
-          if [ -f App.xcworkspace ]; then
+          # Choose workspace or project (.xcworkspace and .xcodeproj are bundle directories)
+          if [ -d App.xcworkspace ] || [ -e App.xcworkspace ]; then
             WORKSPACE="App.xcworkspace"
             SCHEME="App"
             BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
-          elif ls *.xcworkspace 1> /dev/null 2>&1; then
-            WORKSPACE=$(ls *.xcworkspace | head -n1)
-            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
-          elif [ -f App.xcodeproj ]; then
+          elif [ -d App.xcodeproj ] || [ -e App.xcodeproj ]; then
             PROJECT="App.xcodeproj"
             SCHEME="App"
             BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
-          elif ls *.xcodeproj 1> /dev/null 2>&1; then
-            PROJECT=$(ls *.xcodeproj | head -n1)
+          elif compgen -G "*.xcworkspace" > /dev/null; then
+            WORKSPACE=$(ls -d *.xcworkspace | head -n1)
+            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
+          elif compgen -G "*.xcodeproj" > /dev/null; then
+            PROJECT=$(ls -d *.xcodeproj | head -n1)
             SCHEME=$(basename "$PROJECT" .xcodeproj)
             BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
           else
