@@ -30,6 +30,17 @@ export function getApiBaseUrl(): string {
   return envUrl || '/api/v1';
 }
 
+export const isNativeEnvironment = (): boolean => {
+  return (
+    Capacitor.isNativePlatform() ||
+    (typeof window !== 'undefined' && (
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'ionic:' ||
+      (window.location.hostname === 'localhost' && ((window as any).Capacitor || window.location.origin.includes('capacitor')))
+    ))
+  );
+};
+
 const API_URL = getApiBaseUrl();
 
 class ApiService {
@@ -42,7 +53,7 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
-      withCredentials: true,
+      withCredentials: !isNativeEnvironment(),
     });
 
     this.client.interceptors.request.use(
@@ -116,33 +127,52 @@ class ApiService {
   }
 
   async login(credentials: LoginCredentials): Promise<{ user: User; tokens: TokenPair }> {
-    const response = await this.client.post<ApiResponse<{ user: User; tokens: TokenPair }>>('/auth/login', credentials);
-    const resData = response.data;
-    if (!resData || typeof resData !== 'object' || !resData.data) {
-      const errMsg = (resData as any)?.error || (resData as any)?.message || 'Unable to connect to the authentication service. Please check your network connection.';
-      throw new Error(errMsg);
+    try {
+      const response = await this.client.post<ApiResponse<{ user: User; tokens: TokenPair }>>('/auth/login', credentials);
+      const resData = response?.data;
+      if (!resData || typeof resData !== 'object') {
+        throw new Error('Unable to connect to the authentication service. Please check your network connection.');
+      }
+      const sessionData = (resData as any)?.data || resData;
+      if (!sessionData || typeof sessionData !== 'object' || !sessionData.user || !sessionData.tokens) {
+        const errMsg = (resData as any)?.error || (resData as any)?.message || 'Authentication response did not contain valid user session data.';
+        throw new Error(errMsg);
+      }
+      const { user, tokens } = sessionData;
+      this.setAuth(tokens, user);
+      return { user, tokens };
+    } catch (err: any) {
+      if (err.response?.data?.error || err.response?.data?.message) {
+        throw err;
+      }
+      if (err.message && err.message.toLowerCase().includes('network error')) {
+        throw new Error('Unable to reach server. Please check your internet connection.');
+      }
+      throw err;
     }
-    const { user, tokens } = resData.data;
-    if (!user || !tokens) {
-      throw new Error('Authentication response did not contain valid user session data.');
-    }
-    this.setAuth(tokens, user);
-    return { user, tokens };
   }
 
   async register(data: RegisterData): Promise<{ user: User; tokens: TokenPair }> {
-    const response = await this.client.post<ApiResponse<{ user: User; tokens: TokenPair }>>('/auth/register', data);
-    const resData = response.data;
-    if (!resData || typeof resData !== 'object' || !resData.data) {
-      const errMsg = (resData as any)?.error || (resData as any)?.message || 'Registration failed.';
-      throw new Error(errMsg);
+    try {
+      const response = await this.client.post<ApiResponse<{ user: User; tokens: TokenPair }>>('/auth/register', data);
+      const resData = response?.data;
+      if (!resData || typeof resData !== 'object') {
+        throw new Error('Registration failed. Invalid response from server.');
+      }
+      const sessionData = (resData as any)?.data || resData;
+      if (!sessionData || typeof sessionData !== 'object' || !sessionData.user || !sessionData.tokens) {
+        const errMsg = (resData as any)?.error || (resData as any)?.message || 'Registration response did not contain user session data.';
+        throw new Error(errMsg);
+      }
+      const { user, tokens } = sessionData;
+      this.setAuth(tokens, user);
+      return { user, tokens };
+    } catch (err: any) {
+      if (err.response?.data?.error || err.response?.data?.message) {
+        throw err;
+      }
+      throw err;
     }
-    const { user, tokens } = resData.data;
-    if (!user || !tokens) {
-      throw new Error('Registration response did not contain user session data.');
-    }
-    this.setAuth(tokens, user);
-    return { user, tokens };
   }
 
   async logout(revokeAll = false): Promise<void> {

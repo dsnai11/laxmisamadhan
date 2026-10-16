@@ -54,12 +54,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [initializeAuth]);
 
   const login = async (email: string, password: string, mfaCode?: string, rememberMe?: boolean) => {
-    const { user, tokens } = await api.login({ email, password, mfaCode, rememberMe });
+    const res = await api.login({ email, password, mfaCode, rememberMe });
+    if (!res || !res.user) {
+      throw new Error('Authentication failed. Unable to establish user session.');
+    }
+    const { user, tokens } = res;
     setState({ user, tokens, isAuthenticated: true, isLoading: false });
   };
 
   const register = async (data: any) => {
-    const { user, tokens } = await api.register(data);
+    const res = await api.register(data);
+    if (!res || !res.user) {
+      throw new Error('Registration failed. Unable to establish user session.');
+    }
+    const { user, tokens } = res;
     setState({ user, tokens, isAuthenticated: true, isLoading: false });
   };
 

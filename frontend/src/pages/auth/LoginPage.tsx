@@ -60,7 +60,13 @@ export default function LoginPage() {
         setValue('mfaCode', '');
       } else {
         const errorData = error.response?.data;
-        const errorMsg = errorData?.error || errorData?.message || error.message || 'Login failed. Please check your credentials.';
+        let errorMsg = errorData?.error || errorData?.message || error.message || 'Login failed. Please check your credentials.';
+        
+        // Sanitize raw technical JavaScript engine errors
+        if (typeof errorMsg === 'string' && (errorMsg.includes('destructure') || errorMsg.includes('undefined') || errorMsg.includes('null'))) {
+          errorMsg = 'Unable to establish user session. Please verify your credentials and network connection.';
+        }
+
         const isNotCreated = 
           errorData?.code === 'ACCOUNT_NOT_FOUND' || 
           error.response?.status === 404 ||
