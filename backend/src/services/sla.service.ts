@@ -12,6 +12,7 @@ interface SLAPolicyData {
   description?: string;
   departmentId?: string | null;
   category?: TicketCategory | null;
+  subCategory?: string | null;
   priority: TicketPriority;
   responseTimeMins: number;
   resolutionTimeMins: number;
@@ -29,6 +30,7 @@ class SLAService {
         description: data.description,
         departmentId: data.departmentId,
         category: data.category,
+        subCategory: data.subCategory,
         priority: data.priority,
         responseTimeMins: data.responseTimeMins,
         resolutionTimeMins: data.resolutionTimeMins,

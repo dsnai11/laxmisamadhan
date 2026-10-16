@@ -177,6 +177,7 @@ function AppRoutes() {
         <Route path="team-bucket" element={<AgentTeamBucket />} />
         <Route path="teams" element={<AdminTeams />} />
         <Route path="approvals" element={<ApprovalsPage ticketBase="/agent/tickets" />} />
+        <Route path="sla" element={<AdminSLAPolicies />} />
         <Route path="knowledge" element={<AgentKnowledgeBase />} />
       </Route>
 

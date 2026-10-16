@@ -7,17 +7,17 @@ import * as validators from '@validators/ticket.validator';
 const router = Router();
 
 router.use(authenticate);
-router.use(requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'));
+router.use(requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'));
 
 router.get('/', slaController.getPolicies);
 router.get('/compliance', slaController.getSLACompliance);
 router.get('/report', slaController.getSLAReport);
 router.post('/check-timers', slaController.checkSLATimers);
 
-router.post('/', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.slaPolicySchema), slaController.createPolicy);
+router.post('/', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.slaPolicySchema), slaController.createPolicy);
 
 router.get('/:id', slaController.getPolicyById);
-router.patch('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.slaPolicySchema.partial()), slaController.updatePolicy);
-router.delete('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), slaController.deletePolicy);
+router.patch('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.slaPolicySchema.partial()), slaController.updatePolicy);
+router.delete('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), slaController.deletePolicy);
 
 export default router;

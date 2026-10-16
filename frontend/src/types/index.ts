@@ -174,6 +174,7 @@ export interface SLAPolicy {
   departmentId?: string;
   department?: Department;
   category?: TicketCategory;
+  subCategory?: string;
   priority: TicketPriority;
   responseTimeMins: number;
   resolutionTimeMins: number;

@@ -77,7 +77,7 @@ class TicketService {
 
     const ticketNumber = await this.generateTicketNumber(data.departmentId);
     
-    const slaPolicy = await this.getApplicableSLAPolicy(data.departmentId, data.category, data.priority);
+    const slaPolicy = await this.getApplicableSLAPolicy(data.departmentId, data.category, data.priority, data.subCategory);
     const slaTimes = this.calculateSLATimes(slaPolicy);
 
     // Resolve team assignment for subCategory within department if configured
@@ -282,6 +282,19 @@ class TicketService {
 
     if (Object.keys(updates).length === 0) {
       return ticket;
+    }
+
+    if ((updates.priority || updates.category || updates.subCategory) && !ticket.resolvedAt) {
+      const newCategory = (updates.category as TicketCategory) || ticket.category;
+      const newPriority = (updates.priority as TicketPriority) || ticket.priority;
+      const newSubCategory = updates.subCategory !== undefined ? (updates.subCategory as string) : ticket.subCategory;
+      const newPolicy = await this.getApplicableSLAPolicy(ticket.departmentId, newCategory, newPriority, newSubCategory);
+      if (newPolicy && newPolicy.id !== ticket.slaPolicyId) {
+        updates.slaPolicyId = newPolicy.id;
+        const newTimes = this.calculateSLATimes(newPolicy);
+        if (!ticket.respondedAt && newTimes.responseDueAt) updates.responseDueAt = newTimes.responseDueAt;
+        if (newTimes.resolutionDueAt) updates.resolutionDueAt = newTimes.resolutionDueAt;
+      }
     }
 
     const updatedTicket = await prisma.ticket.update({
@@ -898,22 +911,106 @@ class TicketService {
     return ticketNumber;
   }
 
-  private async getApplicableSLAPolicy(departmentId: string, category: TicketCategory, priority: TicketPriority) {
+  private async getApplicableSLAPolicy(departmentId: string, category: TicketCategory, priority: TicketPriority, subCategory?: string | null) {
+    const cleanSubCat = subCategory?.trim();
+
+    // 1. Specific Department + Category + Subcategory + Priority
+    if (cleanSubCat && departmentId && category) {
+      const match = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          category,
+          subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+          priority,
+          isActive: true,
+        },
+      });
+      if (match) return match;
+    }
+
+    // 2. Department + Subcategory + Priority (any category)
+    if (cleanSubCat && departmentId) {
+      const match = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          category: null,
+          subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+          priority,
+          isActive: true,
+        },
+      });
+      if (match) return match;
+    }
+
+    // 3. Global Subcategory + Priority
+    if (cleanSubCat) {
+      const match = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId: null,
+          ...(category ? { category } : {}),
+          subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+          priority,
+          isActive: true,
+        },
+      });
+      if (match) return match;
+    }
+
+    // 4. Department + Category + Priority (no subcategory constraint)
+    if (departmentId && category) {
+      const match = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          category,
+          subCategory: null,
+          priority,
+          isActive: true,
+        },
+      });
+      if (match) return match;
+    }
+
+    // 5. Category Config default SLA
     const categoryConfig = await prisma.ticketCategoryConfig.findUnique({
       where: { departmentId_category: { departmentId, category } },
       include: { slaPolicy: true },
     });
-
     if (categoryConfig?.slaPolicy) return categoryConfig.slaPolicy;
 
+    // 6. Department general Priority SLA
+    const deptPolicy = await prisma.sLAPolicy.findFirst({
+      where: {
+        departmentId,
+        category: null,
+        subCategory: null,
+        priority,
+        isActive: true,
+      },
+    });
+    if (deptPolicy) return deptPolicy;
+
+    // 7. Global Category + Priority (no subcategory constraint)
+    if (category) {
+      const globalCat = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId: null,
+          category,
+          subCategory: null,
+          priority,
+          isActive: true,
+        },
+      });
+      if (globalCat) return globalCat;
+    }
+
+    // 8. Global Priority Fallback
     return prisma.sLAPolicy.findFirst({
       where: {
-        OR: [
-          { departmentId, priority, isActive: true },
-          { departmentId: null, priority, isActive: true },
-        ],
+        departmentId: null,
+        priority,
+        isActive: true,
       },
-      orderBy: { departmentId: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

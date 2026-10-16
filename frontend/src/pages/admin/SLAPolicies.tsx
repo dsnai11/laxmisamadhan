@@ -18,18 +18,31 @@ import {
   PRIORITY_OPTIONS,
 } from '@components/common/ui';
 
-const blank = { name: '', description: '', departmentId: '', category: '', priority: 'MEDIUM', responseTimeMins: 240, resolutionTimeMins: 1440, businessHoursOnly: true, excludesWeekends: true };
+const blank = {
+  name: '',
+  description: '',
+  departmentId: '',
+  category: '',
+  subCategory: '',
+  priority: 'MEDIUM',
+  responseTimeMins: 240,
+  resolutionTimeMins: 1440,
+  businessHoursOnly: true,
+  excludesWeekends: true
+};
 
 export default function AdminSLAPolicies() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const isSuperOrAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user?.role || '');
   const isDeptHead = user?.role === 'DEPARTMENT_HEAD';
-  const canCreate = isSuperOrAdmin || isDeptHead;
+  const isTeamLead = user?.role === 'TEAM_LEAD';
+  const isDeptHeadOrLead = isDeptHead || isTeamLead;
+  const canCreate = isSuperOrAdmin || isDeptHeadOrLead;
 
   const canEditPolicy = (p: any) => {
     if (isSuperOrAdmin) return true;
-    if (isDeptHead && p.departmentId === user?.departmentId) return true;
+    if (isDeptHeadOrLead && p.departmentId === user?.departmentId) return true;
     return false;
   };
 
@@ -42,10 +55,27 @@ export default function AdminSLAPolicies() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<any | null>(null);
 
+  const activeDeptId = isDeptHeadOrLead ? (user?.departmentId || '') : form.departmentId;
+  const { data: deptCategoryConfigs } = useQuery<any[]>({
+    queryKey: ['category-configs', activeDeptId],
+    queryFn: () => api.getCategoryConfigs(activeDeptId),
+    enabled: !!activeDeptId,
+  });
+
+  const currentCategoryConfig = (deptCategoryConfigs || []).find((c: any) => c.category === form.category);
+  const categoryFormFields = currentCategoryConfig?.formFields || {};
+  const configuredSubCategories: string[] = Array.isArray(categoryFormFields.subCategories) ? categoryFormFields.subCategories : [];
+  const defaultSubCategories = ['LOS', 'LMS', 'CRM', 'CLU-collection', 'Desktop', 'Laptop', 'Peripheral', 'Software', 'Network'];
+  const availableSubCategories = Array.from(new Set([
+    ...configuredSubCategories,
+    ...(form.subCategory ? [form.subCategory] : []),
+    ...(configuredSubCategories.length === 0 ? defaultSubCategories : [])
+  ]));
+
   const openNew = () => {
     setForm({
       ...blank,
-      departmentId: isDeptHead ? (user?.departmentId || '') : '',
+      departmentId: isDeptHeadOrLead ? (user?.departmentId || '') : '',
     });
     setEditing('new');
   };
@@ -55,6 +85,7 @@ export default function AdminSLAPolicies() {
       description: p.description || '',
       departmentId: p.departmentId || '',
       category: p.category || '',
+      subCategory: p.subCategory || '',
       priority: p.priority,
       responseTimeMins: p.responseTimeMins,
       resolutionTimeMins: p.resolutionTimeMins,
@@ -73,8 +104,9 @@ export default function AdminSLAPolicies() {
       const body: any = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
-        departmentId: isDeptHead ? (user?.departmentId || undefined) : (form.departmentId || undefined),
+        departmentId: isDeptHeadOrLead ? (user?.departmentId || undefined) : (form.departmentId || undefined),
         category: form.category || undefined,
+        subCategory: form.subCategory.trim() || undefined,
         priority: form.priority,
         responseTimeMins: Number(form.responseTimeMins),
         resolutionTimeMins: Number(form.resolutionTimeMins),
@@ -133,17 +165,25 @@ export default function AdminSLAPolicies() {
         ) : (
           <div className="table-container">
             <table className="table">
-              <thead><tr><th>Policy</th><th>Applies to</th><th>Priority</th><th>Response</th><th>Resolution</th><th>Hours</th>{(isSuperOrAdmin || isDeptHead) && <th />}</tr></thead>
+              <thead><tr><th>Policy</th><th>Applies to</th><th>Priority</th><th>Response</th><th>Resolution</th><th>Hours</th>{(isSuperOrAdmin || isDeptHeadOrLead) && <th />}</tr></thead>
               <tbody>
                 {list.map((p) => (
                   <tr key={p.id}>
                     <td className="font-medium text-gray-900">{p.name}</td>
-                    <td className="text-sm text-gray-600">{p.department?.name || 'All departments'}{p.category ? ` · ${humanize(p.category)}` : ''}</td>
+                    <td className="text-sm text-gray-600">
+                      {p.department?.name || 'All departments'}
+                      {p.category ? ` · ${humanize(p.category)}` : ''}
+                      {p.subCategory ? (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                          Sub: {p.subCategory}
+                        </span>
+                      ) : ''}
+                    </td>
                     <td><PriorityBadge priority={p.priority} /></td>
                     <td className="text-sm">{formatDuration(p.responseTimeMins)}</td>
                     <td className="text-sm">{formatDuration(p.resolutionTimeMins)}</td>
                     <td className="text-sm text-gray-500">{p.businessHoursOnly ? 'Business hours' : '24/7'}</td>
-                    {(isSuperOrAdmin || isDeptHead) && (
+                    {(isSuperOrAdmin || isDeptHeadOrLead) && (
                       <td className="text-right whitespace-nowrap">
                         {canEditPolicy(p) ? (
                           <>
@@ -178,15 +218,15 @@ export default function AdminSLAPolicies() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2"><Field label="Name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field></div>
           <div className="md:col-span-2"><Field label="Description (optional)"><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field></div>
-          <Field label="Department" hint={isDeptHead ? "SLA policy will apply to your department." : "Leave empty to apply to every department."}>
+          <Field label="Department" hint={isDeptHeadOrLead ? "SLA policy will apply to your department." : "Leave empty to apply to every department."}>
             <select
               className="input"
-              disabled={isDeptHead}
-              value={isDeptHead ? (user?.departmentId || '') : form.departmentId}
+              disabled={isDeptHeadOrLead}
+              value={isDeptHeadOrLead ? (user?.departmentId || '') : form.departmentId}
               onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
             >
-              {!isDeptHead && <option value="">All departments</option>}
-              {(departments || []).filter((d: any) => !isDeptHead || d.id === user?.departmentId).map((d: any) => (
+              {!isDeptHeadOrLead && <option value="">All departments</option>}
+              {(departments || []).filter((d: any) => !isDeptHeadOrLead || d.id === user?.departmentId).map((d: any) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
@@ -197,12 +237,38 @@ export default function AdminSLAPolicies() {
               {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{humanize(c)}</option>)}
             </select>
           </Field>
+          <Field label="Subcategory (optional)" hint="Mark subcategory to apply this policy specifically.">
+            <div className="space-y-1.5">
+              <select
+                className="input"
+                value={availableSubCategories.includes(form.subCategory) ? form.subCategory : (form.subCategory ? '__custom__' : '')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__custom__') setForm({ ...form, subCategory: ' ' });
+                  else setForm({ ...form, subCategory: val });
+                }}
+              >
+                <option value="">Any subcategory</option>
+                {availableSubCategories.map((sc) => (
+                  <option key={sc} value={sc}>{sc}</option>
+                ))}
+                <option value="__custom__">+ Custom subcategory...</option>
+              </select>
+              {(!availableSubCategories.includes(form.subCategory) && form.subCategory !== '') && (
+                <input
+                  className="input mt-1"
+                  placeholder="Enter subcategory name..."
+                  value={form.subCategory.trim()}
+                  onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
+                />
+              )}
+            </div>
+          </Field>
           <Field label="Priority">
             <select className="input" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
               {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{humanize(p)}</option>)}
             </select>
           </Field>
-          <div />
           <Field label="First response within (minutes)" hint={formatDuration(form.responseTimeMins)}>
             <input type="number" min={1} className="input" value={form.responseTimeMins} onChange={(e) => setForm({ ...form, responseTimeMins: Number(e.target.value) })} />
           </Field>

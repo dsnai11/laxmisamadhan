@@ -6,9 +6,9 @@ import { AuthenticatedRequest } from '@middleware/auth.middleware';
 import { TicketPriority, TicketCategory } from '@prisma/client';
 
 export const createPolicy = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  if (req.user!.role === 'DEPARTMENT_HEAD') {
+  if (['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(req.user!.role)) {
     if (!req.user!.departmentId) {
-      throw new AppError('Department head is not assigned to any department', 400, 'BAD_REQUEST');
+      throw new AppError('User is not assigned to any department', 400, 'BAD_REQUEST');
     }
     req.body.departmentId = req.user!.departmentId;
   }
@@ -24,7 +24,7 @@ export const createPolicy = asyncHandler(async (req: AuthenticatedRequest, res: 
 
 export const getPolicies = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { departmentId } = req.query;
-  const filterDept = req.user!.role === 'DEPARTMENT_HEAD' ? (req.user!.departmentId || undefined) : (departmentId as string | undefined);
+  const filterDept = ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(req.user!.role) ? (req.user!.departmentId || undefined) : (departmentId as string | undefined);
   
   const policies = await slaService.getPolicies(filterDept);
 
@@ -44,7 +44,7 @@ export const getPolicyById = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 export const updatePolicy = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  if (req.user!.role === 'DEPARTMENT_HEAD') {
+  if (['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(req.user!.role)) {
     const existing = await slaService.getPolicyById(req.params.id);
     if (existing.departmentId !== req.user!.departmentId) {
       throw new AppError('You can only modify SLA policies for your own department', 403, 'FORBIDDEN');
@@ -62,7 +62,7 @@ export const updatePolicy = asyncHandler(async (req: AuthenticatedRequest, res: 
 });
 
 export const deletePolicy = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  if (req.user!.role === 'DEPARTMENT_HEAD') {
+  if (['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(req.user!.role)) {
     const existing = await slaService.getPolicyById(req.params.id);
     if (existing.departmentId !== req.user!.departmentId) {
       throw new AppError('You can only delete SLA policies for your own department', 403, 'FORBIDDEN');

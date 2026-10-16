@@ -21,7 +21,7 @@ const navigation = [
   { name: 'Users', href: '/admin/users', icon: 'users', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'Departments', href: '/admin/departments', icon: 'building', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'Teams', href: '/admin/teams', icon: 'team', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
-  { name: 'SLA Policies', href: '/admin/sla', icon: 'clock', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
+  { name: 'SLA Policies', href: '/admin/sla', icon: 'clock', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'] },
   { name: 'Assets', href: '/admin/assets', icon: 'laptop', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'Knowledge Base', href: '/admin/knowledge', icon: 'book', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'Reports', href: '/admin/reports', icon: 'chart', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
@@ -46,6 +46,7 @@ const agentNavigation = [
   { name: 'Team Bucket', href: '/agent/team-bucket', icon: 'team', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Teams', href: '/agent/teams', icon: 'team', roles: ['TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Approvals', href: '/agent/approvals', icon: 'check', roles: ['TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
+  { name: 'SLA Policies', href: '/agent/sla', icon: 'clock', roles: ['TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Knowledge Base', href: '/agent/knowledge', icon: 'book', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 

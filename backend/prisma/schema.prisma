@@ -400,6 +400,7 @@ model SLAPolicy {
   department        Department? @relation("DepartmentSlaPolicy", fields: [departmentId], references: [id])
   defaultForDepartments Department[] @relation("DepartmentDefaultSlaPolicy")
   category          TicketCategory?
+  subCategory       String?
   priority          TicketPriority
   responseTimeMins  Int
   resolutionTimeMins Int
@@ -418,6 +419,7 @@ model SLAPolicy {
   @@index([departmentId])
   @@index([priority])
   @@index([category])
+  @@index([subCategory])
 }
 
 model SLAEvent {
