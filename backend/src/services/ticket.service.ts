@@ -392,7 +392,6 @@ class TicketService {
         teamId,
         assignedAt: new Date(),
         respondedAt: ticket.respondedAt ?? new Date(),
-        status: TicketStatus.ASSIGNED,
         updates: {
           create: {
             field: 'assignedTo',
@@ -462,14 +461,14 @@ class TicketService {
     const isAgent = userRole === 'AGENT' && (ticket.assignedToId === userId || sameDept);
     const isAssignee = ticket.assignedToId === userId;
 
-    if (status === TicketStatus.CLOSED) {
-      // User request: give rights to close the ticket to agent , team lead , team head this right should not be given to raiser
-      const canClose = isAdmin || isDeptHead || isTeamLead || isAgent || isAssignee;
-      if (!canClose) {
-        throw new Error('Permission denied: Only Agents, Team Leads, Department Heads, and Admins can close tickets. Raisers cannot close tickets.');
+    if (status === TicketStatus.RESOLVED) {
+      // Rights to resolve ticket: Agent, Team Lead, Department Head, and Admin
+      const canResolve = isAdmin || isDeptHead || isTeamLead || isAgent || isAssignee;
+      if (!canResolve) {
+        throw new Error('Permission denied: Only Agents, Team Leads, Department Heads, and Admins can resolve tickets. Raisers cannot resolve tickets.');
       }
     } else {
-      const raiserAllowed = ticket.raisedById === userId && ['REOPENED', 'CANCELLED'].includes(status);
+      const raiserAllowed = ticket.raisedById === userId && status === TicketStatus.REOPENED;
       if (!raiserAllowed && !this.canModifyTicket(ticket, userId, userRole, userDeptId)) {
         throw new Error('Permission denied');
       }
@@ -496,7 +495,7 @@ class TicketService {
       },
     };
 
-    if (!ticket.respondedAt && ['ASSIGNED', 'IN_PROGRESS'].includes(status)) {
+    if (!ticket.respondedAt && status === TicketStatus.OPEN) {
       updateData.respondedAt = new Date();
     }
 
@@ -504,12 +503,9 @@ class TicketService {
       updateData.resolvedAt = new Date();
       updateData.resolution = resolution;
       updateData.resolutionSummary = resolutionSummary;
-    } else if (status === TicketStatus.CLOSED) {
-      updateData.closedAt = new Date();
     } else if (status === TicketStatus.REOPENED) {
       updateData.reopenedCount = { increment: 1 };
       updateData.resolvedAt = null;
-      updateData.closedAt = null;
     }
 
     const updatedTicket = await prisma.ticket.update({
@@ -553,6 +549,10 @@ class TicketService {
 
     if (!isInternal && !ticket.respondedAt && userId !== ticket.raisedById) {
       await prisma.ticket.update({ where: { id: ticketId }, data: { respondedAt: new Date() } });
+    }
+
+    if (!isInternal && userId === ticket.raisedById && ticket.status === TicketStatus.DEPENDENCY_ON_CLIENT) {
+      await this.updateStatus(ticketId, TicketStatus.OPEN, userId, userRole || UserRole.RAISER);
     }
 
     const comment = await prisma.comment.create({
@@ -727,7 +727,7 @@ class TicketService {
                     isSystem: true,
                   },
                 });
-                await this.updateStatus(ticketId, 'CLOSED', userId, userRole, 'RESOLVED', `Merged into ticket #${primary.ticketNumber}`);
+                await this.updateStatus(ticketId, TicketStatus.RESOLVED, userId, userRole, `Merged into ticket #${primary.ticketNumber}`, `Merged into ticket #${primary.ticketNumber}`);
               }
             }
             break;
@@ -866,7 +866,7 @@ class TicketService {
   private canModifyTicket(ticket: any, userId: string, userRole: UserRole, userDeptId?: string): boolean {
     if (['SUPER_ADMIN', 'ADMIN'].includes(userRole)) return true;
     if (ticket.assignedToId === userId) return true;
-    if (ticket.raisedById === userId && ['OPEN', 'PENDING_USER'].includes(ticket.status)) return true;
+    if (ticket.raisedById === userId && ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'].includes(ticket.status)) return true;
     if (ticket.department?.headId === userId) return true;
     if (['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(userRole) && userDeptId && ticket.departmentId === userDeptId) return true;
     return false;
@@ -874,18 +874,12 @@ class TicketService {
 
   private getValidStatusTransitions(currentStatus: TicketStatus): TicketStatus[] {
     const transitions: Record<TicketStatus, TicketStatus[]> = {
-      [TicketStatus.OPEN]: [TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS, TicketStatus.ON_HOLD, TicketStatus.CANCELLED],
-      [TicketStatus.ASSIGNED]: [TicketStatus.IN_PROGRESS, TicketStatus.ON_HOLD, TicketStatus.OPEN, TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED],
-      [TicketStatus.IN_PROGRESS]: [TicketStatus.ON_HOLD, TicketStatus.PENDING_APPROVAL, TicketStatus.PENDING_USER, TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED],
-      [TicketStatus.ON_HOLD]: [TicketStatus.IN_PROGRESS, TicketStatus.OPEN, TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED],
-      [TicketStatus.PENDING_APPROVAL]: [TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED, TicketStatus.CANCELLED],
-      [TicketStatus.PENDING_USER]: [TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED],
-      [TicketStatus.RESOLVED]: [TicketStatus.CLOSED, TicketStatus.REOPENED],
-      [TicketStatus.CLOSED]: [TicketStatus.REOPENED],
-      [TicketStatus.REOPENED]: [TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS, TicketStatus.ON_HOLD, TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED],
-      [TicketStatus.CANCELLED]: [TicketStatus.REOPENED],
+      [TicketStatus.OPEN]: [TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
+      [TicketStatus.DEPENDENCY_ON_CLIENT]: [TicketStatus.OPEN, TicketStatus.RESOLVED],
+      [TicketStatus.RESOLVED]: [TicketStatus.REOPENED],
+      [TicketStatus.REOPENED]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
     };
-    return transitions[currentStatus] || [];
+    return transitions[currentStatus] || [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED, TicketStatus.REOPENED];
   }
 
   private async generateTicketNumber(departmentId: string): Promise<string> {
@@ -1071,7 +1065,7 @@ class TicketService {
               members.map(async (m: any) => ({
                 agent: m,
                 count: await prisma.ticket.count({
-                  where: { assignedToId: m.id, status: { in: [TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS] } },
+                  where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
                 }),
               }))
             );
@@ -1107,7 +1101,7 @@ class TicketService {
             ],
           },
         },
-        _count: { select: { tickets: { where: { status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS'] } } } } },
+        _count: { select: { tickets: { where: { status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] } } } } },
       },
     });
 
@@ -1133,7 +1127,7 @@ class TicketService {
             members.map(async (m: any) => ({
               agent: m,
               count: await prisma.ticket.count({
-                where: { assignedToId: m.id, status: { in: [TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS] } },
+                where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
               }),
             }))
           );
@@ -1169,7 +1163,7 @@ class TicketService {
             agents.map(async (a: any) => ({
               agent: a,
               count: await prisma.ticket.count({
-                where: { assignedToId: a.id, status: { in: [TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS] } },
+                where: { assignedToId: a.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
               }),
             }))
           );
@@ -1260,7 +1254,6 @@ class TicketService {
     ticket.watchers.forEach((w: any) => recipients.add(w.userId));
 
     const notificationType = newStatus === TicketStatus.RESOLVED ? NotificationType.TICKET_RESOLVED :
-                            newStatus === TicketStatus.CLOSED ? NotificationType.TICKET_CLOSED :
                             newStatus === TicketStatus.REOPENED ? NotificationType.TICKET_REOPENED :
                             NotificationType.TICKET_UPDATED;
 

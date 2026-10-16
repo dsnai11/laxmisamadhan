@@ -56,7 +56,7 @@ class ApprovalService {
 
     await prisma.ticket.update({
       where: { id: data.ticketId },
-      data: { status: TicketStatus.PENDING_APPROVAL },
+      data: { status: TicketStatus.DEPENDENCY_ON_CLIENT },
     });
 
     await logActivity(requesterId, 'APPROVAL_REQUESTED', `Requested approval for ticket ${ticket.ticketNumber}`, data.ticketId, { 
@@ -202,7 +202,7 @@ class ApprovalService {
       } else {
         await prisma.ticket.update({
           where: { id: approval.ticketId },
-          data: { status: TicketStatus.IN_PROGRESS },
+          data: { status: TicketStatus.OPEN },
         });
       }
     } else {

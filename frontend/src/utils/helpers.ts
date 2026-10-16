@@ -88,14 +88,16 @@ export function getPriorityColor(priority: string): string {
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     OPEN: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 dark:border dark:border-blue-800/60',
+    DEPENDENCY_ON_CLIENT: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 dark:border dark:border-amber-800/60',
+    RESOLVED: 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300 dark:border dark:border-green-800/60',
+    REOPENED: 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 dark:border dark:border-red-800/60',
+    // Fallbacks
     ASSIGNED: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border dark:border-indigo-800/60',
     IN_PROGRESS: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/60 dark:text-yellow-300 dark:border dark:border-yellow-800/60',
     ON_HOLD: 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700',
     PENDING_APPROVAL: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 dark:border dark:border-purple-800/60',
     PENDING_USER: 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 dark:border dark:border-orange-800/60',
-    RESOLVED: 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300 dark:border dark:border-green-800/60',
     CLOSED: 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700',
-    REOPENED: 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 dark:border dark:border-red-800/60',
     CANCELLED: 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200 dark:border dark:border-slate-700',
   };
   return colors[status] || 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200';

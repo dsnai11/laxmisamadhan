@@ -51,7 +51,7 @@ export default function AdminAllTickets() {
 
   // Filter based on activeTab
   if (activeTab === 'open') params.status = 'OPEN';
-  if (activeTab === 'pending') params.status = 'IN_PROGRESS';
+  if (activeTab === 'pending') params.status = 'DEPENDENCY_ON_CLIENT';
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-tickets', params],
@@ -349,7 +349,7 @@ export default function AdminAllTickets() {
                     <td>
                       <div className="flex items-center gap-1">
                         <span className="badge badge-primary text-[10px] bg-blue-50 text-blue-800 border-blue-200">
-                          {t.status === 'IN_PROGRESS' ? 'Assigned to vendor' : (t.status || 'OPEN').toString().replace(/_/g, ' ')}
+                          {formatDate ? (t.status || 'OPEN').toString().replace(/_/g, ' ') : ''}
                         </span>
                         <LockClosedIcon className="w-3 h-3 text-gray-400" />
                       </div>

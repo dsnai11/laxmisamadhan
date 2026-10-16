@@ -37,9 +37,9 @@ class ReportService {
       topAssignees,
     ] = await Promise.all([
       prisma.ticket.count({ where }),
-      prisma.ticket.count({ where: { ...where, status: { in: [TicketStatus.OPEN, TicketStatus.ASSIGNED] } } }),
-      prisma.ticket.count({ where: { ...where, status: TicketStatus.IN_PROGRESS } }),
-      prisma.ticket.count({ where: { ...where, status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } } }),
+      prisma.ticket.count({ where: { ...where, status: TicketStatus.OPEN } }),
+      prisma.ticket.count({ where: { ...where, status: TicketStatus.DEPENDENCY_ON_CLIENT } }),
+      prisma.ticket.count({ where: { ...where, status: TicketStatus.RESOLVED } }),
       prisma.ticket.count({ where: { ...where, priority: TicketPriority.CRITICAL } }),
       prisma.ticket.count({ where: { ...where, slaStatus: 'BREACHED' } }),
       this.getAvgResolutionTime(where),
@@ -102,7 +102,7 @@ class ReportService {
 
     const performance = await Promise.all(agents.map(async (agent) => {
       const assignedWhere = { ...where, assignedToId: agent.id };
-      const resolvedWhere = { ...assignedWhere, status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } };
+      const resolvedWhere = { ...assignedWhere, status: TicketStatus.RESOLVED };
 
       const [assigned, resolved, avgTime, slaCompliance] = await Promise.all([
         prisma.ticket.count({ where: assignedWhere }),
@@ -159,7 +159,7 @@ class ReportService {
 
   async getSLAReport(params: ReportParams): Promise<any> {
     const where = this.buildTicketWhere(params);
-    const resolvedWhere = { ...where, status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } };
+    const resolvedWhere = { ...where, status: TicketStatus.RESOLVED };
 
     const [total, withinSLA, breached, byPriority, byCategory, avgResponse, avgResolution] = await Promise.all([
       prisma.ticket.count({ where: resolvedWhere }),
@@ -208,8 +208,8 @@ class ReportService {
       return {
         date: format(day, 'yyyy-MM-dd'),
         total: dayTickets.length,
-        open: dayTickets.filter(t => [TicketStatus.OPEN, TicketStatus.ASSIGNED].includes(t.status)).length,
-        resolved: dayTickets.filter(t => [TicketStatus.RESOLVED, TicketStatus.CLOSED].includes(t.status)).length,
+        open: dayTickets.filter(t => t.status !== TicketStatus.RESOLVED).length,
+        resolved: dayTickets.filter(t => t.status === TicketStatus.RESOLVED).length,
       };
     });
 
@@ -324,7 +324,7 @@ class ReportService {
   }
 
   private async getSLACompliance(where: Prisma.TicketWhereInput): Promise<number> {
-    const resolvedWhere = { ...where, status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } };
+    const resolvedWhere = { ...where, status: TicketStatus.RESOLVED };
     const [total, withinSLA] = await Promise.all([
       prisma.ticket.count({ where: resolvedWhere }),
       prisma.ticket.count({ where: { ...resolvedWhere, slaStatus: 'WITHIN_SLA' } }),
@@ -363,7 +363,7 @@ class ReportService {
 
     const where = {
       ...this.buildTicketWhere(params),
-      status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+      status: TicketStatus.RESOLVED,
       resolvedAt: { gte: dateFrom, lte: dateTo },
     };
 

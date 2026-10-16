@@ -84,11 +84,17 @@ class InboundEmailService {
           },
         });
 
-        // Re-open ticket if it was resolved/closed
-        if (['RESOLVED', 'CLOSED'].includes(existingTicket.status)) {
+        // Re-open ticket if it was resolved
+        if (existingTicket.status === TicketStatus.RESOLVED) {
           await prisma.ticket.update({
             where: { id: existingTicket.id },
-            data: { status: 'IN_PROGRESS', reopenedCount: { increment: 1 } },
+            data: { status: TicketStatus.REOPENED, reopenedCount: { increment: 1 }, resolvedAt: null },
+          });
+        } else if (existingTicket.status === TicketStatus.DEPENDENCY_ON_CLIENT) {
+          // If raiser replies to a ticket waiting on client, switch back to OPEN
+          await prisma.ticket.update({
+            where: { id: existingTicket.id },
+            data: { status: TicketStatus.OPEN },
           });
         }
 

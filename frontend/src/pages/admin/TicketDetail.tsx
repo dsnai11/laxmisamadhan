@@ -73,7 +73,7 @@ export default function AdminTicketDetail() {
 
   const agents = (users?.data || []).filter((u: any) => ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'].includes(u.role));
   const teamList = teams || [];
-  const needsResolution = ['RESOLVED', 'CLOSED'].includes(newStatus);
+  const needsResolution = newStatus === 'RESOLVED';
 
   return (
     <div className="space-y-6 max-w-5xl">

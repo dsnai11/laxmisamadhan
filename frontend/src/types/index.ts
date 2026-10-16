@@ -119,15 +119,9 @@ export interface Ticket {
 
 export enum TicketStatus {
   OPEN = 'OPEN',
-  ASSIGNED = 'ASSIGNED',
-  IN_PROGRESS = 'IN_PROGRESS',
-  ON_HOLD = 'ON_HOLD',
-  PENDING_APPROVAL = 'PENDING_APPROVAL',
-  PENDING_USER = 'PENDING_USER',
   RESOLVED = 'RESOLVED',
-  CLOSED = 'CLOSED',
   REOPENED = 'REOPENED',
-  CANCELLED = 'CANCELLED',
+  DEPENDENCY_ON_CLIENT = 'DEPENDENCY_ON_CLIENT',
 }
 
 export enum TicketPriority {

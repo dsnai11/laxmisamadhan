@@ -56,11 +56,13 @@ class AIService {
       actionItems.push('Assign ticket to an active agent/team member.');
     }
     if (ticket.status === 'OPEN') {
-      actionItems.push('Acknowledge ticket and update status to In Progress.');
-    } else if (ticket.status === 'PENDING_USER') {
-      actionItems.push('Follow up with user for pending information.');
+      actionItems.push('Review ticket and provide initial response or resolution.');
+    } else if (ticket.status === 'DEPENDENCY_ON_CLIENT') {
+      actionItems.push('Follow up with client for pending information or clarification.');
     } else if (ticket.status === 'RESOLVED') {
-      actionItems.push('Confirm resolution with raiser before closing.');
+      actionItems.push('Ticket is resolved. Awaiting client review or automatic closure.');
+    } else if (ticket.status === 'REOPENED') {
+      actionItems.push('Review reason for reopening and resume investigation.');
     } else {
       actionItems.push('Review recent comments and provide resolution update.');
     }

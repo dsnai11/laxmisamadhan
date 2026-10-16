@@ -137,7 +137,7 @@ class SLAService {
           { responseDueAt: { lte: addMinutes(now, 30), gt: now } },
           { resolutionDueAt: { lte: addMinutes(now, 60), gt: now } },
         ],
-        status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] },
+        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] },
       },
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
@@ -153,7 +153,7 @@ class SLAService {
           { responseDueAt: { lt: now } },
           { resolutionDueAt: { lt: now } },
         ],
-        status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] },
+        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] },
       },
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
@@ -276,19 +276,19 @@ class SLAService {
       } else if (rule.action === 'escalate' && rule.escalateToUserId) {
         await prisma.ticket.update({
           where: { id: ticket.id },
-          data: { assignedToId: rule.escalateToUserId, assignedAt: new Date(), status: 'ASSIGNED' },
+          data: { assignedToId: rule.escalateToUserId, assignedAt: new Date() },
         });
       } else if (rule.action === 'reassign' && rule.reassignToUserId) {
         await prisma.ticket.update({
           where: { id: ticket.id },
-          data: { assignedToId: rule.reassignToUserId, assignedAt: new Date(), status: 'ASSIGNED' },
+          data: { assignedToId: rule.reassignToUserId, assignedAt: new Date() },
         });
       }
     }
   }
 
   async calculateSLACompliance(departmentId?: string, dateFrom?: Date, dateTo?: Date): Promise<any> {
-    const where: Prisma.TicketWhereInput = { status: { in: ['RESOLVED', 'CLOSED'] } };
+    const where: Prisma.TicketWhereInput = { status: 'RESOLVED' };
     if (departmentId) where.departmentId = departmentId;
     if (dateFrom || dateTo) {
       where.resolvedAt = {};
@@ -352,7 +352,7 @@ class SLAService {
     const byPriority = await prisma.ticket.groupBy({
       by: ['priority', 'slaStatus'],
       where: { 
-        status: { in: ['RESOLVED', 'CLOSED'] },
+        status: 'RESOLVED',
         ...(departmentId ? { departmentId } : {}),
         ...(dateFrom || dateTo ? { resolvedAt: { gte: dateFrom, lte: dateTo } } : {}),
       },
@@ -362,7 +362,7 @@ class SLAService {
     const byCategory = await prisma.ticket.groupBy({
       by: ['category', 'slaStatus'],
       where: { 
-        status: { in: ['RESOLVED', 'CLOSED'] },
+        status: 'RESOLVED',
         ...(departmentId ? { departmentId } : {}),
         ...(dateFrom || dateTo ? { resolvedAt: { gte: dateFrom, lte: dateTo } } : {}),
       },

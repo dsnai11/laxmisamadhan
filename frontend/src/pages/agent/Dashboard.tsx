@@ -5,10 +5,10 @@ import api from '@services/api';
 import { formatRelativeTime, getStatusColor, getPriorityColor, cn } from '@utils/helpers';
 
 const statCards = [
-  { name: 'Assigned', key: 'assigned', icon: TicketIcon, color: 'bg-blue-500', status: 'ASSIGNED' },
-  { name: 'In Progress', key: 'inProgress', icon: ArrowPathIcon, color: 'bg-yellow-500', status: 'IN_PROGRESS' },
-  { name: 'Pending', key: 'pending', icon: ClockIcon, color: 'bg-purple-500', statuses: ['PENDING_APPROVAL', 'PENDING_USER'] },
-  { name: 'Resolved Today', key: 'resolvedToday', icon: CheckCircleIcon, color: 'bg-green-500' },
+  { name: 'Open', key: 'open', icon: TicketIcon, color: 'bg-blue-500', status: 'OPEN' },
+  { name: 'Dependency on Client', key: 'dependency', icon: ArrowPathIcon, color: 'bg-amber-500', status: 'DEPENDENCY_ON_CLIENT' },
+  { name: 'Reopened', key: 'reopened', icon: ClockIcon, color: 'bg-red-500', status: 'REOPENED' },
+  { name: 'Resolved Today', key: 'resolvedToday', icon: CheckCircleIcon, color: 'bg-green-500', status: 'RESOLVED' },
 ];
 
 export default function AgentDashboard() {
@@ -31,9 +31,9 @@ export default function AgentDashboard() {
   const isLoading = assignedLoading || queueLoading;
   const tickets = assignedTickets?.data || [];
 
-  const assigned = tickets.filter((t: any) => t.status === 'ASSIGNED').length;
-  const inProgress = tickets.filter((t: any) => t.status === 'IN_PROGRESS').length;
-  const pending = tickets.filter((t: any) => ['PENDING_APPROVAL', 'PENDING_USER'].includes(t.status)).length;
+  const openCount = tickets.filter((t: any) => t.status === 'OPEN').length;
+  const dependencyCount = tickets.filter((t: any) => t.status === 'DEPENDENCY_ON_CLIENT').length;
+  const reopenedCount = tickets.filter((t: any) => t.status === 'REOPENED').length;
   const resolvedToday = tickets.filter((t: any) => {
     if (!t.resolvedAt) return false;
     const resolved = new Date(t.resolvedAt);
@@ -73,11 +73,11 @@ export default function AgentDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <Link to="/agent/my-assignments?status=ASSIGNED" className="card p-6 hover:shadow-card-hover transition-shadow">
+        <Link to="/agent/my-assignments?status=OPEN" className="card p-6 hover:shadow-card-hover transition-shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Assigned</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{assigned}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Open</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{openCount}</p>
             </div>
             <div className="p-3 rounded-xl bg-blue-500 text-white">
               <TicketIcon className="h-6 w-6" />
@@ -85,31 +85,31 @@ export default function AgentDashboard() {
           </div>
         </Link>
 
-        <Link to="/agent/my-assignments?status=IN_PROGRESS" className="card p-6 hover:shadow-card-hover transition-shadow">
+        <Link to="/agent/my-assignments?status=DEPENDENCY_ON_CLIENT" className="card p-6 hover:shadow-card-hover transition-shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">In Progress</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{inProgress}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Dependency on Client</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{dependencyCount}</p>
             </div>
-            <div className="p-3 rounded-xl bg-yellow-500 text-white">
+            <div className="p-3 rounded-xl bg-amber-500 text-white">
               <ArrowPathIcon className="h-6 w-6" />
             </div>
           </div>
         </Link>
 
-        <Link to="/agent/my-assignments" className="card p-6 hover:shadow-card-hover transition-shadow">
+        <Link to="/agent/my-assignments?status=REOPENED" className="card p-6 hover:shadow-card-hover transition-shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Pending</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{pending}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Reopened</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{reopenedCount}</p>
             </div>
-            <div className="p-3 rounded-xl bg-purple-500 text-white">
+            <div className="p-3 rounded-xl bg-red-500 text-white">
               <ClockIcon className="h-6 w-6" />
             </div>
           </div>
         </Link>
 
-        <Link to="/agent/my-assignments" className="card p-6 hover:shadow-card-hover transition-shadow">
+        <Link to="/agent/my-assignments?status=RESOLVED" className="card p-6 hover:shadow-card-hover transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Resolved Today</p>

@@ -26,15 +26,9 @@ enum UserStatus {
 
 enum TicketStatus {
   OPEN
-  ASSIGNED
-  IN_PROGRESS
-  ON_HOLD
-  PENDING_APPROVAL
-  PENDING_USER
   RESOLVED
-  CLOSED
   REOPENED
-  CANCELLED
+  DEPENDENCY_ON_CLIENT
 }
 
 enum TicketPriority {

@@ -7,6 +7,8 @@ dist/
 build/
 *.tar.gz
 *.zip
+*.apk
+*.ipa
 
 # Environment & Secrets (CRITICAL)
 .env

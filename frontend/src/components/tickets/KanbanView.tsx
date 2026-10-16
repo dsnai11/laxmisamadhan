@@ -11,17 +11,16 @@ interface KanbanViewProps {
 
 const KANBAN_COLUMNS = [
   { id: 'OPEN', title: 'Open', color: 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300' },
-  { id: 'ASSIGNED', title: 'Assigned', color: 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300' },
-  { id: 'IN_PROGRESS', title: 'In Progress', color: 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300' },
-  { id: 'ON_HOLD', title: 'On Hold', color: 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
+  { id: 'DEPENDENCY_ON_CLIENT', title: 'Dependency on Client', color: 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
   { id: 'RESOLVED', title: 'Resolved', color: 'border-green-500 bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300' },
+  { id: 'REOPENED', title: 'Reopen', color: 'border-red-500 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300' },
 ];
 
 export default function KanbanView({ tickets, basePath, onStatusChange }: KanbanViewProps) {
   const navigate = useNavigate();
 
   return (
-    <div className="flex md:grid md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 overflow-x-auto pb-4 max-w-full scrollbar-thin snap-x">
+    <div className="flex md:grid md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 overflow-x-auto pb-4 max-w-full scrollbar-thin snap-x">
       {KANBAN_COLUMNS.map((col) => {
         const columnTickets = tickets.filter((t) => t.status === col.id);
         return (

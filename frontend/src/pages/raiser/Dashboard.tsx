@@ -7,7 +7,7 @@ import { formatRelativeTime, getStatusColor, getPriorityColor, cn } from '@utils
 const statCards = [
   { name: 'My Tickets', key: 'total', icon: TicketIcon, color: 'bg-blue-500' },
   { name: 'Open', key: 'open', icon: ClockIcon, color: 'bg-yellow-500' },
-  { name: 'In Progress', key: 'inProgress', icon: ArrowPathIcon, color: 'bg-blue-500' },
+  { name: 'Waiting on Me', key: 'dependency', icon: ArrowPathIcon, color: 'bg-amber-500' },
   { name: 'Resolved', key: 'resolved', icon: CheckCircleIcon, color: 'bg-green-500' },
 ];
 
@@ -21,10 +21,10 @@ export default function RaiserDashboard() {
 
   const getMyStats = () => {
     const total = tickets?.total || 0;
-    const open = stats.filter((t: any) => ['OPEN', 'ASSIGNED'].includes(t.status)).length;
-    const inProgress = stats.filter((t: any) => t.status === 'IN_PROGRESS').length;
-    const resolved = stats.filter((t: any) => ['RESOLVED', 'CLOSED'].includes(t.status)).length;
-    return { total, open, inProgress, resolved };
+    const open = stats.filter((t: any) => ['OPEN', 'REOPENED'].includes(t.status)).length;
+    const dependency = stats.filter((t: any) => t.status === 'DEPENDENCY_ON_CLIENT').length;
+    const resolved = stats.filter((t: any) => t.status === 'RESOLVED').length;
+    return { total, open, dependency, resolved };
   };
 
   const myStats = getMyStats();

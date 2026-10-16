@@ -27,19 +27,13 @@ import {
 } from '@components/common/ui';
 
 const TRANSITIONS: Record<string, string[]> = {
-  OPEN: ['ASSIGNED', 'IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
-  ASSIGNED: ['IN_PROGRESS', 'ON_HOLD', 'OPEN', 'RESOLVED', 'CLOSED', 'CANCELLED'],
-  IN_PROGRESS: ['ON_HOLD', 'PENDING_APPROVAL', 'PENDING_USER', 'RESOLVED', 'CLOSED', 'CANCELLED'],
-  ON_HOLD: ['IN_PROGRESS', 'OPEN', 'RESOLVED', 'CLOSED', 'CANCELLED'],
-  PENDING_APPROVAL: ['IN_PROGRESS', 'RESOLVED', 'CANCELLED'],
-  PENDING_USER: ['IN_PROGRESS', 'RESOLVED', 'CLOSED', 'CANCELLED'],
-  RESOLVED: ['CLOSED', 'REOPENED'],
-  CLOSED: ['REOPENED'],
-  REOPENED: ['ASSIGNED', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'CLOSED', 'CANCELLED'],
-  CANCELLED: ['REOPENED'],
+  OPEN: ['DEPENDENCY_ON_CLIENT', 'RESOLVED'],
+  DEPENDENCY_ON_CLIENT: ['OPEN', 'RESOLVED'],
+  RESOLVED: ['REOPENED'],
+  REOPENED: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'],
 };
 
-const ACTIVE_STATUSES = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'ON_HOLD', 'PENDING_APPROVAL', 'PENDING_USER', 'REOPENED'];
+const ACTIVE_STATUSES = ['OPEN', 'DEPENDENCY_ON_CLIENT', 'REOPENED'];
 
 function fullName(u?: { firstName?: string; lastName?: string } | null) {
   return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '';
@@ -144,14 +138,14 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
     );
   }
 
-  const staffTransitions = (TRANSITIONS[ticket.status] || []).filter((s) => s !== 'ASSIGNED');
-  // Raiser can only cancel or reopen tickets, NEVER close them
-  const raiserTransitions = (TRANSITIONS[ticket.status] || []).filter((s) => ['REOPENED', 'CANCELLED'].includes(s));
+  const staffTransitions = (TRANSITIONS[ticket.status] || []);
+  // Raiser can only reopen tickets (when RESOLVED)
+  const raiserTransitions = (TRANSITIONS[ticket.status] || []).filter((s) => s === 'REOPENED');
   const comments: any[] = ticket.comments || [];
   const attachments: any[] = ticket.attachments || [];
   const updates: any[] = ticket.updates || [];
   const visibleUpdates = showAllActivity ? updates : updates.slice(0, 8);
-  const canComment = ticket.status !== 'CLOSED' && ticket.status !== 'CANCELLED';
+  const canComment = true;
 
   const postComment = async () => {
     const text = comment.trim();
@@ -170,10 +164,6 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
     }
     if (status === 'REOPENED') {
       setReopenOpen(true);
-      return;
-    }
-    if (status === 'CANCELLED') {
-      setCancelOpen(true);
       return;
     }
     const ok = await run('status', () => api.updateTicketStatus(ticket.id, status), `Status changed to ${humanize(status)}`);
@@ -458,25 +448,10 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
                 </div>
               )}
 
-              {canClose && ticket.status !== 'CLOSED' && ticket.status !== 'CANCELLED' && (
-                <div className="pt-2 border-t border-gray-100 dark:border-slate-800">
-                  <button
-                    className="w-full py-2 px-3 text-sm font-medium rounded-lg text-white bg-danger-600 hover:bg-danger-700 transition-colors shadow-xs"
-                    disabled={busy === 'status'}
-                    onClick={() => changeStatus('CLOSED')}
-                  >
-                    {busy === 'status' ? 'Closing...' : 'Close Ticket'}
-                  </button>
-                </div>
-              )}
-
               {!canWork && isRaiser && raiserTransitions.length > 0 && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 pt-2 border-t border-gray-100 dark:border-slate-800">
                   {raiserTransitions.includes('REOPENED') && (
-                    <button className="btn-secondary" onClick={() => changeStatus('REOPENED')}>Reopen ticket</button>
-                  )}
-                  {raiserTransitions.includes('CANCELLED') && (
-                    <button className="btn-ghost text-danger-600" onClick={() => changeStatus('CANCELLED')}>Cancel ticket</button>
+                    <button className="btn-secondary w-full" onClick={() => changeStatus('REOPENED')}>Reopen ticket</button>
                   )}
                 </div>
               )}
@@ -585,16 +560,6 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
         </Field>
       </Modal>
 
-      <ConfirmModal
-        open={cancelOpen}
-        title="Cancel ticket"
-        message="Are you sure you want to cancel this ticket? You can reopen it later if you change your mind."
-        confirmLabel="Cancel ticket"
-        danger
-        busy={busy === 'status'}
-        onConfirm={submitCancel}
-        onClose={() => setCancelOpen(false)}
-      />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { formatRelativeTime, cn } from '@utils/helpers';
 import { PageHeader, PageLoader, ErrorState, EmptyState, StatusBadge, PriorityBadge, SLABadge } from '@components/common/ui';
 
 
-const STATUS_OPTIONS = ['', 'OPEN', 'ASSIGNED', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'CLOSED'];
+const STATUS_OPTIONS = ['', 'OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED', 'REOPENED'];
 const PRIORITY_OPTIONS = ['', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL', 'URGENT'];
 
 export default function TeamBucket() {
@@ -92,7 +92,7 @@ export default function TeamBucket() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {members.map((m: any) => {
           const memberTickets = tickets.filter((t: any) => t.assignedTo?.id === m.id);
-          const open = memberTickets.filter((t: any) => !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(t.status)).length;
+          const open = memberTickets.filter((t: any) => t.status !== 'RESOLVED').length;
           return (
             <button
               key={m.id}

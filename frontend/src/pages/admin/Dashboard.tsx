@@ -11,7 +11,7 @@ const formatNumber = (num: number) => {
 const statCards = [
   { name: 'Total Tickets', key: 'totalTickets', icon: TicketIcon, color: 'bg-blue-500', href: '/admin/tickets' },
   { name: 'Open Tickets', key: 'openTickets', icon: ClockIcon, color: 'bg-yellow-500', href: '/admin/tickets?status=OPEN' },
-  { name: 'In Progress', key: 'inProgressTickets', icon: ChartBarIcon, color: 'bg-blue-500', href: '/admin/tickets?status=IN_PROGRESS' },
+  { name: 'Dependency on Client', key: 'inProgressTickets', icon: ChartBarIcon, color: 'bg-amber-500', href: '/admin/tickets?status=DEPENDENCY_ON_CLIENT' },
   { name: 'Resolved', key: 'resolvedTickets', icon: CheckCircleIcon, color: 'bg-green-500', href: '/admin/tickets?status=RESOLVED' },
   { name: 'Critical', key: 'criticalTickets', icon: ExclamationTriangleIcon, color: 'bg-red-500', href: '/admin/tickets?priority=CRITICAL' },
   { name: 'SLA Breached', key: 'slaBreached', icon: ExclamationTriangleIcon, color: 'bg-orange-500', href: '/admin/tickets?slaStatus=BREACHED' },
