@@ -1,0 +1,1 @@
+{"name":"tutorial-recorder","private":true,"type":"module","scripts":{"record":"node record.mjs","build":"bash build-video.sh"},"devDependencies":{"playwright":"^1.56.1"}}
