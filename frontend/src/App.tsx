@@ -11,6 +11,7 @@ import VerifyEmailPage from '@pages/auth/VerifyEmailPage';
 
 // Admin pages
 import AdminDashboard from '@pages/admin/Dashboard';
+import ManagementDashboard from '@pages/admin/ManagementDashboard';
 import AdminAllTickets from '@pages/admin/AllTickets';
 import AdminTicketDetail from '@pages/admin/TicketDetail';
 import ApprovalsPage from '@pages/common/Approvals';
@@ -131,6 +132,7 @@ function AppRoutes() {
       }>
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="management-dashboard" element={<ManagementDashboard />} />
         <Route path="tickets" element={<AdminAllTickets />} />
         <Route path="tickets/:id" element={<AdminTicketDetail />} />
         <Route path="approvals" element={<ApprovalsPage ticketBase="/admin/tickets" />} />

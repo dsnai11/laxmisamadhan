@@ -17,6 +17,7 @@ router.get('/tickets/trend', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEA
 })), reportController.getTicketTrend);
 
 router.get('/agents/performance', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), reportController.getAgentPerformance);
+router.get('/management-dashboard', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), reportController.getManagementDashboard);
 router.get('/departments', requireRole('SUPER_ADMIN', 'ADMIN'), reportController.getDepartmentReport);
 router.get('/sla', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'), reportController.getSLAReport);
 

@@ -15,6 +15,7 @@ import { triggerHaptic } from '@utils/nativeApp';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: 'home', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
+  { name: 'Management Dashboard', href: '/admin/management-dashboard', icon: 'chart', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'Raise Ticket', href: '/raiser/create-ticket', icon: 'plus', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'All Tickets', href: '/admin/tickets', icon: 'ticket', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
   { name: 'Team Bucket', href: '/agent/team-bucket', icon: 'team', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
@@ -41,6 +42,7 @@ const raiserNavigation = [
 
 const agentNavigation = [
   { name: 'Dashboard', href: '/agent/dashboard', icon: 'home', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
+  { name: 'Management Dashboard', href: '/admin/management-dashboard', icon: 'chart', roles: ['DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Raise Ticket', href: '/raiser/create-ticket', icon: 'plus', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'My Requests', href: '/raiser/my-tickets', icon: 'ticket', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Ticket Queue', href: '/agent/queue', icon: 'queue', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
@@ -83,6 +85,7 @@ export default function Layout() {
 
   const rootPaths = [
     '/admin/dashboard',
+    '/admin/management-dashboard',
     '/admin/tickets',
     '/admin/approvals',
     '/agent/dashboard',

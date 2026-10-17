@@ -124,3 +124,31 @@ export const exportTickets = asyncHandler(async (req: AuthenticatedRequest, res:
   
   res.send(data);
 });
+
+export const getManagementDashboard = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const userRoles = req.user!.roles && req.user!.roles.length > 0 ? req.user!.roles : [req.user!.role];
+  if (!userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r))) {
+    throw new AppError('Insufficient permissions', 403, 'FORBIDDEN');
+  }
+
+  const isGlobalAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r));
+  let departmentId = req.query.departmentId as string | undefined;
+  if (!isGlobalAdmin && req.user!.departmentId) {
+    departmentId = req.user!.departmentId;
+  }
+
+  const params = {
+    departmentId,
+    dateFrom: req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined,
+    dateTo: req.query.dateTo ? new Date(req.query.dateTo as string) : undefined,
+    search: req.query.search as string | undefined,
+    tier: req.query.tier as string | undefined,
+  };
+
+  const dashboardData = await reportService.getExecutiveManagementDashboard(params);
+
+  res.json({
+    success: true,
+    data: dashboardData,
+  });
+});

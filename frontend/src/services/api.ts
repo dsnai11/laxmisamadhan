@@ -738,6 +738,11 @@ class ApiService {
     return response.data.data!;
   }
 
+  async getManagementDashboard(params?: Record<string, any>): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/reports/management-dashboard', { params });
+    return response.data.data!;
+  }
+
   async getAuditLogs(params?: Record<string, any>): Promise<any> {
     const response = await this.client.get<ApiResponse<any>>('/audit-logs', { params });
     return toPage<any>(response.data.data, 'logs');
