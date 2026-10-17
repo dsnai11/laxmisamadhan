@@ -425,7 +425,7 @@ export default function AdminUsers() {
 
       <div className="card">
         <div className="p-4 border-b border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input className="input" placeholder="Search name or email" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Search users" />
+          <input className="input" placeholder="Search name, email, or employee ID..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Search users" />
           <select className="input" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} aria-label="Filter by role">
             <option value="">All roles</option>
             {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{humanize(r)}</option>)}

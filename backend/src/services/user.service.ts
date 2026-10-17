@@ -645,6 +645,7 @@ class UserService {
           { firstName: { contains: query, mode: 'insensitive' } },
           { lastName: { contains: query, mode: 'insensitive' } },
           { email: { contains: query, mode: 'insensitive' } },
+          { employeeId: { contains: query, mode: 'insensitive' } },
         ],
         status: UserStatus.ACTIVE,
       },
@@ -688,6 +689,7 @@ class UserService {
         { firstName: { contains: params.search, mode: 'insensitive' } },
         { lastName: { contains: params.search, mode: 'insensitive' } },
         { email: { contains: params.search, mode: 'insensitive' } },
+        { employeeId: { contains: params.search, mode: 'insensitive' } },
       ];
     }
 
