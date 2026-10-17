@@ -18,18 +18,23 @@ export const createUserSchema = z.object({
 
 export const bulkCreateUserSchema = z.object({
   users: z.array(z.object({
+    employeeId: z.string().max(100).optional().nullable(),
+    firstName: z.string().min(1, 'First name is required').max(100),
+    lastName: z.string().max(100).optional().nullable(),
+    departmentName: z.string().max(150).optional().nullable(),
+    departmentRaiserName: z.string().max(150).optional().nullable(),
+    desginations: z.string().max(150).optional().nullable(),
+    designations: z.string().max(150).optional().nullable(),
+    jobTitle: z.string().max(150).optional().nullable(),
     email: z.string().email('Invalid email address'),
-    firstName: z.string().min(1, 'First name is required').max(50),
-    lastName: z.string().min(1, 'Last name is required').max(50),
-    phone: z.string().optional(),
-    employeeId: z.string().max(100).optional(),
-    role: z.nativeEnum(UserRole).default(UserRole.RAISER),
+    phone: z.string().max(50).optional().nullable(),
+    role: z.string().optional().nullable(),
     roles: z.array(z.nativeEnum(UserRole)).optional(),
-    status: z.nativeEnum(UserStatus).default(UserStatus.ACTIVE),
-    departmentId: z.string().uuid().optional(),
-    temporaryPassword: z.string().optional(),
+    status: z.nativeEnum(UserStatus).default(UserStatus.ACTIVE).optional(),
+    departmentId: z.string().optional().nullable(),
+    temporaryPassword: z.string().optional().nullable(),
     sendWelcomeEmail: z.boolean().default(false),
-  })).min(1).max(500),
+  })).min(1).max(1000),
 });
 
 export const updateUserSchema = z.object({
@@ -42,6 +47,7 @@ export const updateUserSchema = z.object({
   jobTitle: z.string().max(100).nullable().optional(),
   site: z.string().max(100).nullable().optional(),
   reportingManagerName: z.string().max(100).nullable().optional(),
+  departmentRaiserName: z.string().max(150).nullable().optional(),
   role: z.nativeEnum(UserRole).optional(),
   roles: z.array(z.nativeEnum(UserRole)).optional(),
   status: z.nativeEnum(UserStatus).optional(),

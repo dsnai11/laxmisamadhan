@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect } from 'react';
 import { Outlet, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Dialog, Transition, Menu } from '@headlessui/react';
-import { XMarkIcon, Bars3Icon, BellIcon, UserCircleIcon, MoonIcon, SunIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, Bars3Icon, BellIcon, UserCircleIcon, MoonIcon, SunIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '@context/AuthContext';
 import { useSocket } from '@context/SocketContext';
 import { useTheme } from '@context/ThemeContext';
@@ -10,6 +10,8 @@ import { Notification } from '@types';
 import { formatRelativeTime, getInitials, cn } from '@utils/helpers';
 import NotificationDropdown from '@components/common/NotificationDropdown';
 import UserMenu from '@components/common/UserMenu';
+import MobileBottomNav from '@components/layout/MobileBottomNav';
+import { triggerHaptic } from '@utils/nativeApp';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: 'home', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
@@ -78,6 +80,20 @@ export default function Layout() {
   const userRoles = user?.roles && user.roles.length > 0 ? (user.roles as string[]) : [user?.role || ''];
   const navItems = getNavigation(userRoles);
   const portalName = getPortalName(userRoles);
+
+  const rootPaths = [
+    '/admin/dashboard',
+    '/admin/tickets',
+    '/admin/approvals',
+    '/agent/dashboard',
+    '/agent/queue',
+    '/agent/team-bucket',
+    '/raiser/dashboard',
+    '/raiser/my-tickets',
+    '/raiser/knowledge',
+    '/raiser/profile',
+  ];
+  const isChildRoute = !rootPaths.includes(location.pathname);
 
   useEffect(() => {
     if (!user) return;
@@ -189,17 +205,34 @@ export default function Layout() {
       {/* Main content */}
       <div className="lg:pl-64 flex flex-col min-h-screen w-full min-w-0">
         {/* Top header */}
-        <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-colors header-safe-top pt-[env(safe-area-inset-top,0px)]">
+        <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-gray-200 dark:border-slate-800 transition-colors header-safe-top pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center justify-between h-16 px-3 sm:px-6 gap-2">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <button
-                type="button"
-                className="lg:hidden p-2 -ml-1 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg shrink-0 transition-colors"
-                onClick={() => setSidebarOpen(true)}
-              >
-                <span className="sr-only">Open sidebar</span>
-                <Bars3Icon className="h-6 w-6" aria-hidden="true" />
-              </button>
+              {isChildRoute ? (
+                <button
+                  type="button"
+                  className="lg:hidden p-2 -ml-1 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full shrink-0 transition-transform active:scale-90"
+                  onClick={() => {
+                    triggerHaptic();
+                    navigate(-1);
+                  }}
+                  aria-label="Go Back"
+                >
+                  <ChevronLeftIcon className="h-6 w-6 stroke-[2.5]" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="lg:hidden p-2 -ml-1 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg shrink-0 transition-colors active:scale-90"
+                  onClick={() => {
+                    triggerHaptic();
+                    setSidebarOpen(true);
+                  }}
+                >
+                  <span className="sr-only">Open sidebar</span>
+                  <Bars3Icon className="h-6 w-6" aria-hidden="true" />
+                </button>
+              )}
               <img src="/logo.jpg" alt="Laxmi India Finance Ltd" className="h-8 w-8 rounded object-cover lg:hidden border border-gray-200 dark:border-slate-700 shrink-0" />
               <h1 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-white truncate min-w-0">{portalName}</h1>
             </div>
@@ -207,11 +240,11 @@ export default function Layout() {
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
               <Link
                 to="/raiser/create-ticket"
-                className="btn-primary btn-sm flex items-center gap-1.5 font-medium shadow-sm hover:shadow transition-all"
+                className="btn-primary btn-sm hidden sm:flex items-center gap-1.5 font-medium shadow-sm hover:shadow transition-all"
                 title="Raise a new ticket"
               >
                 <span className="text-base font-bold leading-none">+</span>
-                <span className="hidden sm:inline">Raise Ticket</span>
+                <span>Raise Ticket</span>
               </Link>
 
               <button
@@ -244,9 +277,12 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden mobile-safe-bottom pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
+        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden mobile-safe-bottom pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-8">
           <Outlet />
         </main>
+
+        {/* Native Mobile Bottom Navigation */}
+        <MobileBottomNav onOpenMore={() => setSidebarOpen(true)} />
       </div>
     </div>
   );

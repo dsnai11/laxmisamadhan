@@ -12,10 +12,17 @@ const logger = createLogger('user-service');
 interface CreateUserData {
   email: string;
   firstName: string;
-  lastName: string;
+  lastName?: string;
   phone?: string;
+  mobile?: string;
   employeeId?: string;
-  role?: UserRole;
+  jobTitle?: string;
+  desginations?: string;
+  designations?: string;
+  departmentName?: string;
+  departmentRaiserName?: string;
+  reportingManagerName?: string;
+  role?: any;
   roles?: UserRole[];
   status?: UserStatus;
   departmentId?: string;
@@ -34,6 +41,7 @@ interface UpdateUserData {
   jobTitle?: string | null;
   site?: string | null;
   reportingManagerName?: string | null;
+  departmentRaiserName?: string | null;
   role?: UserRole;
   roles?: UserRole[];
   status?: UserStatus;
@@ -59,21 +67,53 @@ interface UserQueryParams {
 class UserService {
   async createUser(data: CreateUserData, createdById?: string): Promise<any> {
     const existingUser = await prisma.user.findUnique({
-      where: { email: data.email.toLowerCase() },
+      where: { email: data.email.toLowerCase().trim() },
     });
 
     if (existingUser) {
-      throw new Error('Email already registered');
+      throw new Error(`Email ${data.email} is already registered`);
     }
 
     let password = data.temporaryPassword || generateToken(12);
     const passwordHash = await hashPassword(password);
 
+    let firstName = (data.firstName || '').trim();
+    let lastName = (data.lastName || '').trim();
+    if (!lastName && firstName.includes(' ')) {
+      const parts = firstName.split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ');
+    }
+    if (!lastName) {
+      lastName = '-';
+    }
+
+    // Resolve Department: by ID or by Name
+    let departmentId = data.departmentId || null;
+    if (!departmentId && data.departmentName && data.departmentName.trim()) {
+      const dName = data.departmentName.trim();
+      let dept = await prisma.department.findFirst({
+        where: { name: { equals: dName, mode: 'insensitive' } },
+      });
+      if (!dept) {
+        dept = await prisma.department.create({
+          data: { name: dName },
+        });
+      }
+      departmentId = dept.id;
+    }
+
+    const jobTitle = (data.jobTitle || data.designations || data.desginations || '').trim() || null;
+    const departmentRaiserName = (data.departmentRaiserName || '').trim() || null;
+    const reportingManagerName = (data.reportingManagerName || departmentRaiserName || '').trim() || null;
+
     let roles: UserRole[] = [];
+    const validRoles = Object.values(UserRole);
     if (data.roles && data.roles.length > 0) {
       roles = Array.from(new Set(data.roles));
     } else if (data.role) {
-      roles = [data.role];
+      const formatted = String(data.role).trim().toUpperCase().replace(/[\s-]+/g, '_') as UserRole;
+      roles = validRoles.includes(formatted) ? [formatted] : [UserRole.RAISER];
     } else {
       roles = [UserRole.RAISER];
     }
@@ -81,16 +121,20 @@ class UserService {
 
     const user = await prisma.user.create({
       data: {
-        email: data.email.toLowerCase(),
+        email: data.email.toLowerCase().trim(),
         passwordHash,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        phone: data.phone,
-        employeeId: data.employeeId || null,
+        firstName,
+        lastName,
+        phone: data.phone?.trim() || null,
+        mobile: data.mobile?.trim() || null,
+        employeeId: data.employeeId?.trim() || null,
+        jobTitle,
+        departmentRaiserName,
+        reportingManagerName,
         role: primaryRole,
         roles,
         status: data.status || UserStatus.ACTIVE,
-        departmentId: data.departmentId,
+        departmentId,
         managerId: data.managerId,
         createdById,
         lastPasswordChange: new Date(),
@@ -101,7 +145,11 @@ class UserService {
         firstName: true,
         lastName: true,
         phone: true,
+        mobile: true,
         employeeId: true,
+        jobTitle: true,
+        departmentRaiserName: true,
+        reportingManagerName: true,
         role: true,
         roles: true,
         status: true,
@@ -138,7 +186,7 @@ class UserService {
         results.failed++;
         results.errors.push({
           email: userData.email,
-          name: `${userData.firstName} ${userData.lastName}`,
+          name: `${userData.firstName} ${userData.lastName || ''}`.trim(),
           error: error instanceof Error ? error.message : 'Failed to create user',
         });
       }
@@ -163,7 +211,11 @@ class UserService {
           firstName: true,
           lastName: true,
           phone: true,
+          mobile: true,
           employeeId: true,
+          jobTitle: true,
+          departmentRaiserName: true,
+          reportingManagerName: true,
           role: true,
           roles: true,
           status: true,
@@ -203,6 +255,7 @@ class UserService {
         jobTitle: true,
         site: true,
         reportingManagerName: true,
+        departmentRaiserName: true,
         role: true,
         roles: true,
         status: true,
@@ -283,6 +336,7 @@ class UserService {
         jobTitle: true,
         site: true,
         reportingManagerName: true,
+        departmentRaiserName: true,
         role: true,
         roles: true,
         status: true,

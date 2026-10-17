@@ -199,13 +199,21 @@ function AppRoutes() {
 }
 
 import ErrorBoundary from '@components/common/ErrorBoundary';
+import { useTheme } from '@context/ThemeContext';
+import { initNativeApp, updateNativeStatusBar } from '@utils/nativeApp';
 
 export default function App() {
   const { initializeAuth } = useAuth();
+  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     initializeAuth();
+    initNativeApp(isDarkMode);
   }, [initializeAuth]);
+
+  useEffect(() => {
+    updateNativeStatusBar(isDarkMode);
+  }, [isDarkMode]);
 
   return (
     <ErrorBoundary>

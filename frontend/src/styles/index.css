@@ -7,9 +7,26 @@
     @apply border-gray-200 dark:border-slate-800;
   }
   
-  body {
+  html, body {
     @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-slate-100 antialiased min-h-screen overflow-x-hidden;
     font-feature-settings: "rlig" 1, "calt" 1;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Keep text selection enabled for inputs, textareas, and code blocks */
+  input, textarea, select, [contenteditable="true"], .selectable, pre, code {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+  }
+
+  /* Native touch responsiveness */
+  button, a, [role="button"], input[type="submit"] {
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
 

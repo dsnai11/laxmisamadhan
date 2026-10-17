@@ -110,6 +110,7 @@ model User {
   jobTitle          String?
   site              String?
   reportingManagerName String?
+  departmentRaiserName String?
   avatar            String?
   role              UserRole   @default(RAISER)
   roles             UserRole[] @default([])

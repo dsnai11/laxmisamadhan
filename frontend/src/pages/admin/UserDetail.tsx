@@ -45,6 +45,7 @@ export default function AdminUserDetail() {
     jobTitle: string;
     site: string;
     reportingManagerName: string;
+    departmentRaiserName: string;
     departmentId: string;
     role: string;
     roles: string[];
@@ -59,6 +60,7 @@ export default function AdminUserDetail() {
     jobTitle: '',
     site: '',
     reportingManagerName: '',
+    departmentRaiserName: '',
     departmentId: '',
     role: '',
     roles: [],
@@ -83,6 +85,7 @@ export default function AdminUserDetail() {
         jobTitle: user.jobTitle || '',
         site: user.site || '',
         reportingManagerName: user.reportingManagerName || '',
+        departmentRaiserName: user.departmentRaiserName || '',
         departmentId: user.departmentId || '',
         role: user.role,
         roles: currentRoles,
@@ -125,6 +128,7 @@ export default function AdminUserDetail() {
         jobTitle: form.jobTitle.trim() || null,
         site: form.site.trim() || null,
         reportingManagerName: form.reportingManagerName.trim() || null,
+        departmentRaiserName: form.departmentRaiserName.trim() || null,
         ...(isOrgWide ? { departmentId: (form.departmentId || null) as any } : {}),
       });
       const oldRoles = ((user.roles && user.roles.length > 0 ? user.roles : [user.role]) as string[]).slice().sort();
@@ -220,6 +224,9 @@ export default function AdminUserDetail() {
         </Field>
         <Field label="Job Title / Designation">
           <input className="input" disabled={!editable} placeholder="e.g. Senior Manager" value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
+        </Field>
+        <Field label="Department Raiser Name">
+          <input className="input" disabled={!editable} placeholder="e.g. Priya Singh" value={form.departmentRaiserName} onChange={(e) => setForm({ ...form, departmentRaiserName: e.target.value })} />
         </Field>
         <Field label="Site / Branch / Location">
           <input className="input" disabled={!editable} placeholder="e.g. Mumbai Head Office" value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })} />
