@@ -109,9 +109,8 @@ export default function AdminUsers() {
 
   const openBulk = () => {
     const defRole = roles.includes('RAISER') ? 'RAISER' : roles[0] || 'RAISER';
-    const defDeptName = departments && departments.length > 0 ? departments[0].name : '';
     setBulkDefaultRole(defRole);
-    setBulkDefaultDept(defDeptName);
+    setBulkDefaultDept('');
     setBulkRows([
       {
         id: '1',
@@ -131,7 +130,7 @@ export default function AdminUsers() {
         id: '2',
         employeeId: '1002',
         firstName: '',
-        departmentName: defDeptName,
+        departmentName: '',
         departmentRaiserName: '',
         designations: '',
         branch: '',
@@ -305,7 +304,7 @@ export default function AdminUsers() {
 
         const employeeId = (usePositional ? cols[0] : idIdx !== -1 ? cols[idIdx] : '') || `${idPrefix}${idStartNum + i - 1}`;
         const firstName = usePositional ? cols[1] : (fnIdx !== -1 ? cols[fnIdx] : '');
-        const departmentName = (usePositional ? cols[2] : (deptIdx !== -1 ? cols[deptIdx] : '')) || bulkDefaultDept;
+        const departmentName = (usePositional ? cols[2] : (deptIdx !== -1 ? cols[deptIdx] : '')) || '';
         const departmentRaiserName = usePositional ? cols[3] : (raiserIdx !== -1 ? cols[raiserIdx] : '');
         const designations = usePositional ? cols[4] : (desigIdx !== -1 ? cols[desigIdx] : '');
         const branch = usePositional ? cols[5] : (branchIdx !== -1 ? cols[branchIdx] : '');
