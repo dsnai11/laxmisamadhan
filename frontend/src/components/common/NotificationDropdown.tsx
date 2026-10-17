@@ -3,6 +3,7 @@ import { Transition, Menu } from '@headlessui/react';
 import { BellIcon, XMarkIcon, CheckIcon, EnvelopeIcon, TicketIcon, ExclamationTriangleIcon, ShieldCheckIcon, UserPlusIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import { Notification } from '@types';
 import { formatRelativeTime, cn } from '@utils/helpers';
+import { showTrayNotification } from '@services/nativeNotification';
 
 interface NotificationDropdownProps {
   isOpen: boolean;
@@ -72,7 +73,22 @@ export default function NotificationDropdown({
       >
         <Menu.Items className="absolute right-0 z-50 mt-2 w-[calc(100vw-1.5rem)] sm:w-96 max-w-sm origin-top-right rounded-lg bg-white dark:bg-slate-900 shadow-xl ring-1 ring-black/5 dark:ring-slate-800 border border-transparent dark:border-slate-800 focus:outline-none">
           <div className="p-3 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  showTrayNotification({
+                    title: 'Laxmi Samadhan Handset Alert',
+                    message: 'Your Android handset notification tray is active and ready!',
+                  });
+                }}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-100"
+                title="Send a test notification to your Android notification tray"
+              >
+                Test Tray
+              </button>
+            </div>
             {unreadCount > 0 && (
               <button
                 className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"

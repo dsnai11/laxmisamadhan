@@ -68,9 +68,19 @@ function getPortalName(userRoles: string[]) {
   return 'IT Service Desk';
 }
 
+import { initTrayNotifications, showTrayNotification } from '@services/nativeNotification';
+
 export default function Layout() {
   const { user, logout, hasRole } = useAuth();
-  const { isConnected, onNotification } = useSocket();
+  const {
+    isConnected,
+    onNotification,
+    onAssignment,
+    onStatusChange,
+    onSLAWarning,
+    onSLABreach,
+    onApprovalRequest,
+  } = useSocket();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -98,30 +108,144 @@ export default function Layout() {
   ];
   const isChildRoute = !rootPaths.includes(location.pathname);
 
+  // Initialize Android Notification Tray & Listeners
   useEffect(() => {
     if (!user) return;
 
-    const unsubscribe = onNotification((notification) => {
-      setNotifications(prev => [notification, ...prev.slice(0, 49)]);
-      setUnreadCount(prev => prev + 1);
+    // 1. Initialize Android handset notification tray channel & click-through routing
+    initTrayNotifications((url) => {
+      navigate(url);
     });
 
-    return unsubscribe;
-  }, [user, onNotification]);
+    const unsubs: (() => void)[] = [];
+
+    // 2. Incoming socket notification
+    unsubs.push(
+      onNotification((notification) => {
+        setNotifications((prev) => [notification, ...prev.slice(0, 49)]);
+        setUnreadCount((prev) => prev + 1);
+
+        // Show directly in Android notification tray!
+        showTrayNotification({
+          id: notification.id,
+          title: notification.title || 'Laxmi Samadhan Alert',
+          message: notification.message,
+          referenceType: notification.referenceType,
+          referenceId: notification.referenceId,
+        });
+      })
+    );
+
+    // 3. Ticket Assignment
+    unsubs.push(
+      onAssignment((data) => {
+        showTrayNotification({
+          title: 'Ticket Assigned',
+          message: data.ticketNumber
+            ? `Ticket #${data.ticketNumber} has been assigned to you`
+            : 'You have been assigned a new ticket',
+          ticketId: data.ticketId,
+        });
+      })
+    );
+
+    // 4. Ticket Status Changed
+    unsubs.push(
+      onStatusChange((data) => {
+        showTrayNotification({
+          title: 'Ticket Status Updated',
+          message: `Ticket status changed to ${data.status.replace(/_/g, ' ')}`,
+          ticketId: data.ticketId,
+        });
+      })
+    );
+
+    // 5. SLA Warning (approaching breach)
+    unsubs.push(
+      onSLAWarning((data) => {
+        showTrayNotification({
+          title: '⚠️ SLA Warning: Approaching Breach',
+          message: data.message || `Ticket ${data.ticketNumber || ''} is approaching SLA breach deadline`,
+          ticketId: data.ticketId,
+        });
+      })
+    );
+
+    // 6. SLA Breach alert
+    unsubs.push(
+      onSLABreach((data) => {
+        showTrayNotification({
+          title: '🚨 SLA Alert: Ticket Breached',
+          message: data.message || `Ticket ${data.ticketNumber || ''} has breached its SLA policy deadline`,
+          ticketId: data.ticketId,
+        });
+      })
+    );
+
+    // 7. Approval Request
+    unsubs.push(
+      onApprovalRequest((approval) => {
+        showTrayNotification({
+          title: 'Ticket Approval Required',
+          message: 'A new ticket approval request requires your authorization',
+          ticketId: approval.ticketId,
+        });
+      })
+    );
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [user, onNotification, onAssignment, onStatusChange, onSLAWarning, onSLABreach, onApprovalRequest, navigate]);
 
   const handleLogout = async () => {
     await logout(true);
     navigate('/login');
   };
 
+  // Periodic background notification sync for Android handsets
   useEffect(() => {
     if (!user) return;
-    api.getNotifications({ page: 1, limit: 20 })
-      .then((res: any) => {
-        setNotifications(res.data || []);
-        setUnreadCount(res.unreadCount || 0);
-      })
-      .catch(() => undefined);
+
+    const seenIds = new Set<string>();
+    let isInitial = true;
+
+    const pollNotifications = async () => {
+      try {
+        const res: any = await api.getNotifications({ page: 1, limit: 15 });
+        const list: Notification[] = res?.data || [];
+        setNotifications(list);
+        setUnreadCount(res?.unreadCount || 0);
+
+        if (isInitial) {
+          list.forEach((n) => seenIds.add(n.id));
+          isInitial = false;
+          return;
+        }
+
+        // Show any newly arrived notification in the Android tray
+        for (const n of list) {
+          if (!seenIds.has(n.id)) {
+            seenIds.add(n.id);
+            if (!n.isRead) {
+              showTrayNotification({
+                id: n.id,
+                title: n.title || 'Laxmi Samadhan Alert',
+                message: n.message,
+                referenceType: n.referenceType,
+                referenceId: n.referenceId,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        // Silent on transient network blip
+      }
+    };
+
+    pollNotifications();
+    const interval = setInterval(pollNotifications, 25000); // Poll every 25s
+    return () => clearInterval(interval);
   }, [user?.id]);
 
   const markNotificationRead = (id: string) => {
