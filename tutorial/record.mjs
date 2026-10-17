@@ -1,6 +1,7 @@
 // Records every tutorial video with Playwright, then muxes in the narration.
 //   node record.mjs --export          write out/narration.json (input for narrate.py)
 //   node record.mjs [--only 03-agent] record + mux into out/videos/*.mp4
+//   add --lang hi for captions and narration from i18n/hi.json (output in out/hi/)
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -11,12 +12,15 @@ import { videos } from './scenes.mjs';
 import { Director, DryDirector } from './lib/director.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.join(here, 'out');
+const args = process.argv.slice(2);
+const lang = args.includes('--lang') ? args[args.indexOf('--lang') + 1] : 'en';
+const i18n = lang === 'en' ? null : JSON.parse(fs.readFileSync(path.join(here, 'i18n', `${lang}.json`), 'utf8'));
+const OUT = lang === 'en' ? path.join(here, 'out') : path.join(here, 'out', lang);
 const AUDIO = path.join(OUT, 'audio');
 const RAW = path.join(OUT, 'raw');
 const VIDEOS = path.join(OUT, 'videos');
 const VIEWPORT = { width: 1600, height: 900 };
-const args = process.argv.slice(2);
+const translationFor = (id) => i18n && { scenes: i18n.scenes, video: i18n.videos[id] ?? {}, brand: i18n.brand };
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',') : null;
 
 fs.mkdirSync(OUT, { recursive: true });
@@ -24,12 +28,14 @@ fs.mkdirSync(OUT, { recursive: true });
 if (args.includes('--export')) {
   const lines = [];
   for (const v of videos) {
-    const d = new DryDirector(v.id);
+    const d = new DryDirector(v.id, translationFor(v.id));
     await v.run.call(v, d, {});
     lines.push(...d.lines);
   }
-  fs.writeFileSync(path.join(OUT, 'narration.json'), JSON.stringify(lines, null, 2));
-  console.log(`Wrote ${lines.length} narration lines to out/narration.json`);
+  const missing = lines.filter((l) => l.missing).map((l) => l.id);
+  if (missing.length) throw new Error(`i18n/${lang}.json has no translation for: ${missing.join(', ')}`);
+  fs.writeFileSync(path.join(OUT, 'narration.json'), JSON.stringify(lines.map(({ id, text }) => ({ id, text })), null, 2));
+  console.log(`Wrote ${lines.length} narration lines to ${path.relative(here, OUT)}/narration.json`);
   process.exit(0);
 }
 
@@ -55,7 +61,7 @@ for (const v of videos) {
   await context.addInitScript(overlay);
   const page = await context.newPage();
   const t0 = Date.now();
-  const d = new Director({ videoId: v.id, page, durations, t0, log: console.log });
+  const d = new Director({ videoId: v.id, page, durations, t0, log: console.log, translation: translationFor(v.id) });
 
   await page.goto(`${BASE_URL}/login`);
   await page.waitForLoadState('networkidle').catch(() => {});

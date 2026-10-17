@@ -7,20 +7,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Collects narration text without touching a browser (used by `--export`).
 export class DryDirector {
-  constructor(videoId) {
+  constructor(videoId, translation) {
     this.videoId = videoId;
+    this.translation = translation;
     this.lines = [];
   }
   async scene(text) {
-    this.lines.push({ id: `${this.videoId}-${String(this.lines.length).padStart(2, '0')}`, text });
+    const id = `${this.videoId}-${String(this.lines.length).padStart(2, '0')}`;
+    const translated = this.translation?.scenes[id];
+    this.lines.push({ id, text: translated ?? text, missing: Boolean(this.translation && !translated) });
   }
   async hideCard() {}
   async badge() {}
 }
 
 export class Director {
-  constructor({ videoId, page, durations, t0, log }) {
+  // `translation` (optional) replaces scene captions, title card and badge text.
+  constructor({ videoId, page, durations, t0, log, translation }) {
     this.videoId = videoId;
+    this.translation = translation;
     this.page = page;
     this.durations = durations;
     this.t0 = t0;
@@ -38,6 +43,7 @@ export class Director {
   async scene(text, actions = async () => {}, { pad = 0.6 } = {}) {
     const id = `${this.videoId}-${String(this.count++).padStart(2, '0')}`;
     const duration = this.durations[id] ?? text.split(/\s+/).length / 2.6;
+    text = this.translation?.scenes[id] ?? text;
     const start = this.now();
     this.cues.push({ id, start, text });
     await this.overlay({ caption: text });
@@ -51,9 +57,12 @@ export class Director {
     await this.highlight(null);
   }
 
-  async titleCard(title, subtitle) { await this.overlay({ card: { title, subtitle }, caption: '' }); }
+  async titleCard(title, subtitle) {
+    const t = this.translation;
+    await this.overlay({ card: { title: t?.video.title ?? title, subtitle: t?.video.subtitle ?? subtitle, brand: t?.brand }, caption: '' });
+  }
   async hideCard() { await this.overlay({ card: null }); }
-  async badge(html) { await this.overlay({ badge: html }); }
+  async badge(html) { await this.overlay({ badge: this.translation?.video.badge ?? html }); }
 
   async highlight(locator) {
     if (!locator) return this.page.evaluate(() => window.__tut?.highlight(null)).catch(() => {});

@@ -7,7 +7,7 @@
   const write = (s) => { try { sessionStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
 
   const css = `
-    #tut-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; font-family: Inter, system-ui, sans-serif; }
+    #tut-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; font-family: Inter, 'Noto Sans Devanagari', system-ui, sans-serif; }
     #tut-badge { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: #111827e6; color: #fff;
       padding: 6px 16px; border-radius: 999px; font-size: 15px; font-weight: 600; letter-spacing: .02em; box-shadow: 0 4px 14px #0004; }
     #tut-badge b { color: #fca5a5; font-weight: 700; }
@@ -59,7 +59,7 @@
       root.prepend(card);
     }
     if (card) {
-      if (s.card) card.innerHTML = `<h1>${s.card.title}</h1><p>${s.card.subtitle || ''}</p><small>Laxmi Samadhan · IT Service Desk tutorial</small>`;
+      if (s.card) card.innerHTML = `<h1>${s.card.title}</h1><p>${s.card.subtitle || ''}</p><small>${s.card.brand || 'Laxmi Samadhan · IT Service Desk tutorial'}</small>`;
       else card.remove();
     }
     const cur = root.querySelector('#tut-cursor');

@@ -41,6 +41,22 @@ node record.mjs --only 03-agent   # re-record one video (needs earlier videos' d
 
 Output goes to `out/videos/*.mp4` and `out/laxmi-samadhan-full-tutorial.mp4`.
 
+### Hindi (and other languages)
+
+```bash
+./make-videos.sh --lang hi   # -> out/hi/videos/*.mp4, out/hi/laxmi-samadhan-full-tutorial-hi.mp4
+```
+
+Captions, title cards, the role badge and narration come from `i18n/hi.json`
+(keyed by scene id, e.g. `03-agent-05`). The app UI itself stays in English.
+Hindi uses the Kokoro `hf_alpha` voice; `hf_beta`, `hm_omega` and `hm_psi` also
+work (`python3 narrate.py --lang hi --voice hm_omega`). Captions need a
+Devanagari font (`apt-get install fonts-noto-core`).
+
+To add a language, copy `i18n/hi.json`, translate every scene, and set `voice`
+and `ttsLang` to a Kokoro voice/language. `record.mjs --export` fails if any
+scene is missing a translation.
+
 ## Editing
 
 - Narration and steps for each role are in `scenes.mjs`. Each `d.scene(text, actions)` is
