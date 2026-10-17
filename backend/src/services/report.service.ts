@@ -461,6 +461,93 @@ class ReportService {
       ? Number((allRated.reduce((sum, t) => sum + (t.satisfactionRating || 0), 0) / allRated.length).toFixed(1))
       : null;
 
+    // Open breached count across organization
+    let orgOpenBreached = 0;
+    for (const t of allTickets) {
+      if (t.status !== TicketStatus.RESOLVED) {
+        if (t.slaStatus === 'BREACHED' || (t.resolutionDueAt && now > t.resolutionDueAt)) {
+          orgOpenBreached++;
+        }
+      }
+    }
+
+    // Daily Timeline Trend Data for Area/Line Charts
+    const trendMap = new Map<string, { date: string; created: number; resolved: number; slaMet: number; slaBreached: number }>();
+    for (const t of allTickets) {
+      const dayStr = format(t.createdAt, 'yyyy-MM-dd');
+      if (!trendMap.has(dayStr)) {
+        trendMap.set(dayStr, { date: dayStr, created: 0, resolved: 0, slaMet: 0, slaBreached: 0 });
+      }
+      const entry = trendMap.get(dayStr)!;
+      entry.created++;
+      if (t.status === TicketStatus.RESOLVED) {
+        entry.resolved++;
+        const isB = t.slaStatus === 'BREACHED' || (t.resolutionDueAt && t.resolvedAt && t.resolvedAt > t.resolutionDueAt);
+        if (isB) entry.slaBreached++;
+        else entry.slaMet++;
+      }
+    }
+
+    const trend = Array.from(trendMap.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-30)
+      .map(item => {
+        const evalCount = item.slaMet + item.slaBreached;
+        return {
+          ...item,
+          label: item.date.slice(5),
+          complianceRate: evalCount > 0 ? Math.round((item.slaMet / evalCount) * 100) : 100,
+        };
+      });
+
+    // Priority vs SLA Breakdown
+    const byPriority = (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(p => {
+      const pTickets = allTickets.filter(t => t.priority === p);
+      const resolved = pTickets.filter(t => t.status === TicketStatus.RESOLVED);
+      let met = 0;
+      let breached = 0;
+      for (const t of resolved) {
+        const isB = t.slaStatus === 'BREACHED' || (t.resolutionDueAt && t.resolvedAt && t.resolvedAt > t.resolutionDueAt);
+        if (isB) breached++;
+        else met++;
+      }
+      const totalEval = met + breached;
+      return {
+        priority: p,
+        total: pTickets.length,
+        resolved: resolved.length,
+        open: pTickets.length - resolved.length,
+        slaMet: met,
+        slaBreached: breached,
+        complianceRate: totalEval > 0 ? Math.round((met / totalEval) * 100) : 100,
+      };
+    });
+
+    // Overall SLA Status Distribution for Donut Chart
+    const slaStatusDistribution = [
+      { name: 'Resolved Within SLA', value: orgSlaMet, color: '#10B981' },
+      { name: 'Resolved Breached', value: orgSlaBreached, color: '#F43F5E' },
+      { name: 'Open (On Track)', value: Math.max(0, totalOpen - orgOpenBreached), color: '#3B82F6' },
+      { name: 'Open (Overdue)', value: orgOpenBreached, color: '#F59E0B' },
+    ].filter(item => item.value > 0);
+
+    // Top 10 Agent Leaderboard by Resolved & Compliance
+    const leaderboard = [...agentRows]
+      .filter(a => a.resolvedCount > 0)
+      .sort((a, b) => b.resolvedCount - a.resolvedCount || b.slaComplianceRate - a.slaComplianceRate)
+      .slice(0, 10)
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        employeeId: a.employeeId,
+        departmentName: a.department?.name || 'General',
+        resolvedCount: a.resolvedCount,
+        slaMetCount: a.slaMetCount,
+        slaBreachedCount: a.slaBreachedCount,
+        slaComplianceRate: a.slaComplianceRate,
+        tier: a.tier,
+      }));
+
     let filteredAgents = [...agentRows];
     if (params.search && params.search.trim()) {
       const q = params.search.toLowerCase().trim();
@@ -494,6 +581,7 @@ class ReportService {
         overallResolutionRate,
         slaMetCount: orgSlaMet,
         slaBreachedCount: orgSlaBreached,
+        openBreachedCount: orgOpenBreached,
         slaComplianceRate: overallSlaComplianceRate,
         avgResolutionTimeMins: overallAvgResolutionMins,
         avgResponseTimeMins: overallAvgResponseMins,
@@ -505,6 +593,10 @@ class ReportService {
       agents: filteredAgents,
       departments: departmentBreakdown,
       slaPolicies: policyBreakdown,
+      trend,
+      byPriority,
+      slaStatusDistribution,
+      leaderboard,
     };
   }
 

@@ -2,6 +2,22 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
+  ResponsiveContainer,
+  ComposedChart,
+  Area,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts';
+import {
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
@@ -17,6 +33,10 @@ import {
   StarIcon,
   UserGroupIcon,
   BoltIcon,
+  ChartBarIcon,
+  AdjustmentsHorizontalIcon,
+  TrophyIcon,
+  QueueListIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import api from '@services/api';
@@ -27,6 +47,8 @@ import { PageLoader, ErrorState, getErrorMessage } from '@components/common/ui';
 type DateFilterPreset = 'today' | '7d' | '30d' | '90d' | 'this_month' | 'all';
 type TierFilter = 'ALL' | 'TOP_PERFORMER' | 'GOOD' | 'NEEDS_ATTENTION' | 'CRITICAL';
 type SortField = 'slaComplianceRate' | 'resolvedCount' | 'assignedCount' | 'avgResolutionTimeMins';
+type ViewTab = 'analytics' | 'matrix' | 'departments' | 'policies';
+type TrendChartMetric = 'all' | 'volume' | 'compliance';
 
 interface RecentTicket {
   id: string;
@@ -100,6 +122,44 @@ interface SLAPolicyBreakdown {
   avgResolutionTimeMins: number;
 }
 
+interface TrendPoint {
+  date: string;
+  label: string;
+  created: number;
+  resolved: number;
+  slaMet: number;
+  slaBreached: number;
+  complianceRate: number;
+}
+
+interface PriorityStat {
+  priority: string;
+  total: number;
+  resolved: number;
+  open: number;
+  slaMet: number;
+  slaBreached: number;
+  complianceRate: number;
+}
+
+interface DonutSlice {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface LeaderboardItem {
+  id: string;
+  name: string;
+  employeeId: string;
+  departmentName: string;
+  resolvedCount: number;
+  slaMetCount: number;
+  slaBreachedCount: number;
+  slaComplianceRate: number;
+  tier: string;
+}
+
 interface DashboardKPIs {
   totalTickets: number;
   totalAssigned: number;
@@ -108,6 +168,7 @@ interface DashboardKPIs {
   overallResolutionRate: number;
   slaMetCount: number;
   slaBreachedCount: number;
+  openBreachedCount: number;
   slaComplianceRate: number;
   avgResolutionTimeMins: number;
   avgResponseTimeMins: number;
@@ -119,6 +180,7 @@ interface DashboardKPIs {
 
 export default function ManagementDashboard() {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<ViewTab>('analytics');
   const [datePreset, setDatePreset] = useState<DateFilterPreset>('30d');
   const [departmentId, setDepartmentId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -127,6 +189,8 @@ export default function ManagementDashboard() {
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentPerformance | null>(null);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [trendMetric, setTrendMetric] = useState<TrendChartMetric>('all');
+  const [onlyBreachedFilter, setOnlyBreachedFilter] = useState<boolean>(false);
 
   // Compute date range based on preset
   const dateRange = useMemo(() => {
@@ -185,6 +249,7 @@ export default function ManagementDashboard() {
     overallResolutionRate: 0,
     slaMetCount: 0,
     slaBreachedCount: 0,
+    openBreachedCount: 0,
     slaComplianceRate: 100,
     avgResolutionTimeMins: 0,
     avgResponseTimeMins: 0,
@@ -197,6 +262,10 @@ export default function ManagementDashboard() {
   const agents: AgentPerformance[] = dashboardData?.agents || [];
   const departments: DepartmentBreakdown[] = dashboardData?.departments || [];
   const slaPolicies: SLAPolicyBreakdown[] = dashboardData?.slaPolicies || [];
+  const trendData: TrendPoint[] = dashboardData?.trend || [];
+  const priorityData: PriorityStat[] = dashboardData?.byPriority || [];
+  const donutData: DonutSlice[] = dashboardData?.slaStatusDistribution || [];
+  const leaderboardData: LeaderboardItem[] = dashboardData?.leaderboard || [];
 
   // Filter & sort agents in memory
   const processedAgents = useMemo(() => {
@@ -217,6 +286,10 @@ export default function ManagementDashboard() {
       list = list.filter((a) => a.tier === selectedTier);
     }
 
+    if (onlyBreachedFilter) {
+      list = list.filter((a) => a.slaBreachedCount > 0 || a.openBreachedCount > 0);
+    }
+
     list.sort((a, b) => {
       const valA = a[sortField] ?? 0;
       const valB = b[sortField] ?? 0;
@@ -227,7 +300,7 @@ export default function ManagementDashboard() {
     });
 
     return list;
-  }, [agents, searchQuery, selectedTier, sortField, sortAsc]);
+  }, [agents, searchQuery, selectedTier, onlyBreachedFilter, sortField, sortAsc]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -313,13 +386,13 @@ export default function ManagementDashboard() {
                 <ShieldCheckIcon className="w-4 h-4" />
                 Executive Leadership View
               </span>
-              <span className="text-xs text-indigo-300 font-mono">MD & Board Direct Access</span>
+              <span className="text-xs text-indigo-300 font-mono">Managing Director Direct Access</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
               Management Dashboard
             </h1>
             <p className="text-indigo-200/80 text-sm max-w-2xl">
-              Real-time monitoring of agent ticket resolution performance, SLA compliance metrics, and operational velocity across all departments.
+              Real-time interactive monitoring of agent ticket resolution velocity, SLA policy compliance, and operational efficiency across all resolving departments.
             </p>
           </div>
 
@@ -328,7 +401,7 @@ export default function ManagementDashboard() {
               onClick={() => refetch()}
               disabled={isRefetching}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs sm:text-sm font-medium border border-white/10 transition-all active:scale-95 disabled:opacity-50"
-              title="Refresh data"
+              title="Refresh live data"
             >
               <ArrowPathIcon className={cn('w-4 h-4', isRefetching && 'animate-spin')} />
               <span>{isRefetching ? 'Refreshing...' : 'Refresh'}</span>
@@ -393,17 +466,24 @@ export default function ManagementDashboard() {
         </div>
       </div>
 
-      {/* Top Executive KPI Cards */}
+      {/* Top Interactive KPI Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Card 1: SLA Compliance */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+        <div
+          onClick={() => {
+            setActiveTab('matrix');
+            setSelectedTier('TOP_PERFORMER');
+          }}
+          className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm relative overflow-hidden cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-all hover:shadow-md group"
+          title="Click to view Top Performers"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">
               Overall SLA Compliance
             </span>
             <div
               className={cn(
-                'w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs',
+                'w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm',
                 kpis.slaComplianceRate >= 90
                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
                   : kpis.slaComplianceRate >= 80
@@ -420,7 +500,6 @@ export default function ManagementDashboard() {
             </span>
             <span className="text-xs font-medium text-gray-500 dark:text-slate-400">Target: ≥95%</span>
           </div>
-          {/* Progress Bar */}
           <div className="mt-3 w-full bg-gray-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
             <div
               className={cn(
@@ -445,12 +524,20 @@ export default function ManagementDashboard() {
         </div>
 
         {/* Card 2: Tickets Handled */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm">
+        <div
+          onClick={() => {
+            setActiveTab('matrix');
+            setSelectedTier('ALL');
+            setOnlyBreachedFilter(false);
+          }}
+          className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-all hover:shadow-md group"
+          title="Click to view all agents"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">
               Tickets Resolved
             </span>
-            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 flex items-center justify-center font-bold text-xs shadow-sm">
               <CheckCircleIcon className="w-5 h-5" />
             </div>
           </div>
@@ -467,18 +554,20 @@ export default function ManagementDashboard() {
             />
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
-            <span>Resolution Rate: <strong className="text-gray-900 dark:text-white">{kpis.overallResolutionRate}%</strong></span>
-            <span>{kpis.totalOpen} Pending</span>
+            <span>
+              Resolution Rate: <strong className="text-gray-900 dark:text-white">{kpis.overallResolutionRate}%</strong>
+            </span>
+            <span className="text-amber-600 font-medium">{kpis.totalOpen} Pending</span>
           </div>
         </div>
 
-        {/* Card 3: MTTR (Mean Time to Resolution) */}
+        {/* Card 3: MTTR & Response Speed */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
-              Avg Resolution Time (MTTR)
+              Mean Resolution (MTTR)
             </span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
+            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-sm">
               <ClockIcon className="w-5 h-5" />
             </div>
           </div>
@@ -489,34 +578,53 @@ export default function ManagementDashboard() {
           </div>
           <div className="mt-3 text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1.5">
             <ArrowTrendingUpIcon className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Avg 1st response: <strong>{formatDuration(kpis.avgResponseTimeMins)}</strong></span>
+            <span>
+              Avg 1st response: <strong>{formatDuration(kpis.avgResponseTimeMins)}</strong>
+            </span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
-            <span>Total Agents Active</span>
+            <span>Total Active Agents</span>
             <strong className="text-gray-900 dark:text-white">{kpis.totalAgents}</strong>
           </div>
         </div>
 
-        {/* Card 4: Top vs Critical Agents */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm">
+        {/* Card 4: SLA Breaches & Attention Alert */}
+        <div
+          onClick={() => {
+            setActiveTab('matrix');
+            setOnlyBreachedFilter(true);
+          }}
+          className={cn(
+            'bg-white dark:bg-slate-900 rounded-2xl p-5 border shadow-sm cursor-pointer transition-all hover:shadow-md group',
+            kpis.slaBreachedCount > 0 || kpis.openBreachedCount > 0
+              ? 'border-rose-200 dark:border-rose-950 hover:border-rose-400'
+              : 'border-gray-200 dark:border-slate-800'
+          )}
+          title="Click to filter agents with breached tickets"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
-              Agent Performance Health
+            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider group-hover:text-rose-600 transition-colors">
+              SLA Risk & Breaches
             </span>
-            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400 flex items-center justify-center font-bold text-xs">
-              <UserGroupIcon className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 flex items-center justify-center font-bold text-xs shadow-sm">
+              <ExclamationTriangleIcon className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-              {kpis.topPerformersCount}
+            <span className="text-3xl font-extrabold text-rose-600 dark:text-rose-400">
+              {kpis.slaBreachedCount + kpis.openBreachedCount}
             </span>
-            <span className="text-xs text-gray-500 dark:text-slate-400">Top Performers (≥90%)</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Total SLA Violations</span>
           </div>
           <div className="mt-3 flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
-              {kpis.needsAttentionCount} Needs Attention (&lt;80%)
+              {kpis.slaBreachedCount} Resolved Late
             </span>
+            {kpis.openBreachedCount > 0 && (
+              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
+                {kpis.openBreachedCount} Overdue Now
+              </span>
+            )}
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
             <span>Customer CSAT</span>
@@ -528,393 +636,849 @@ export default function ManagementDashboard() {
         </div>
       </div>
 
-      {/* Department SLA Comparison Cards */}
-      {departments.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <BuildingOfficeIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                Department SLA Compliance Breakdown
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
-                Compare resolution efficiency and SLA adherence across resolving units
-              </p>
+      {/* Navigation View Tabs */}
+      <div className="border-b border-gray-200 dark:border-slate-800">
+        <nav className="flex space-x-2 sm:space-x-4 overflow-x-auto pb-1" aria-label="Dashboard Views">
+          {[
+            { id: 'analytics', label: '📊 Interactive Analytics & Trends', icon: ChartBarIcon },
+            { id: 'matrix', label: `👥 Agent SLA Matrix (${processedAgents.length})`, icon: UserGroupIcon },
+            { id: 'departments', label: `🏢 Department Benchmarks (${departments.length})`, icon: BuildingOfficeIcon },
+            { id: 'policies', label: `⏱️ SLA Policy Targets (${slaPolicies.length})`, icon: ClockIcon },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as ViewTab)}
+                className={cn(
+                  'flex items-center gap-2 py-3 px-3.5 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all rounded-t-xl',
+                  isActive
+                    ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20'
+                    : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-300'
+                )}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* TAB 1: INTERACTIVE ANALYTICS & GRAPHS VIEW */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Top Row: SLA Trend Timeline & Donut Distribution */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Chart 1: SLA Resolution & Compliance Timeline (2 Cols) */}
+            <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white flex items-center gap-2">
+                    <ArrowTrendingUpIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    SLA Compliance & Resolution Velocity Over Time
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    Daily distribution of tickets resolved within SLA deadline vs breached
+                  </p>
+                </div>
+
+                {/* Metric Toggles */}
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
+                  <button
+                    onClick={() => setTrendMetric('all')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg font-medium transition-all',
+                      trendMetric === 'all'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-semibold'
+                        : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                    )}
+                  >
+                    Combined
+                  </button>
+                  <button
+                    onClick={() => setTrendMetric('volume')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg font-medium transition-all',
+                      trendMetric === 'volume'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-semibold'
+                        : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                    )}
+                  >
+                    Volume
+                  </button>
+                  <button
+                    onClick={() => setTrendMetric('compliance')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg font-medium transition-all',
+                      trendMetric === 'compliance'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-semibold'
+                        : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                    )}
+                  >
+                    SLA %
+                  </button>
+                </div>
+              </div>
+
+              {trendData.length === 0 ? (
+                <div className="h-72 flex items-center justify-center text-gray-400 text-xs">
+                  No ticket activity recorded for the selected timeframe.
+                </div>
+              ) : (
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="slaMetGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
+                        </linearGradient>
+                        <linearGradient id="slaBreachedGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#F43F5E" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:opacity-20" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis
+                        yAxisId="left"
+                        allowDecimals={false}
+                        tick={{ fontSize: 11 }}
+                        label={trendMetric !== 'compliance' ? { value: 'Tickets', angle: -90, position: 'insideLeft', fontSize: 10, offset: 25 } : undefined}
+                      />
+                      {trendMetric !== 'volume' && (
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          domain={[0, 100]}
+                          tick={{ fontSize: 11 }}
+                          unit="%"
+                        />
+                      )}
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderRadius: '12px',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+
+                      {trendMetric !== 'compliance' && (
+                        <Area
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="slaMet"
+                          name="Within SLA"
+                          stroke="#10B981"
+                          strokeWidth={2}
+                          fillOpacity={1}
+                          fill="url(#slaMetGradient)"
+                        />
+                      )}
+                      {trendMetric !== 'compliance' && (
+                        <Area
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="slaBreached"
+                          name="Breached SLA"
+                          stroke="#F43F5E"
+                          strokeWidth={2}
+                          fillOpacity={1}
+                          fill="url(#slaBreachedGradient)"
+                        />
+                      )}
+                      {trendMetric !== 'volume' && (
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="complianceRate"
+                          name="SLA Compliance %"
+                          stroke="#6366F1"
+                          strokeWidth={3}
+                          dot={{ r: 3, fill: '#6366F1' }}
+                        />
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            {/* Chart 2: Interactive SLA Status Donut */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4 flex flex-col justify-between">
+              <div>
+                <h3 className="font-bold text-base text-gray-900 dark:text-white flex items-center gap-2">
+                  <BoltIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  SLA Status Distribution
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Resolution and compliance share across all tickets
+                </p>
+              </div>
+
+              {donutData.length === 0 ? (
+                <div className="h-60 flex items-center justify-center text-gray-400 text-xs">
+                  No ticket data to display.
+                </div>
+              ) : (
+                <div className="relative h-60 w-full flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {donutData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderRadius: '10px',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '11px',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Donut Center Display */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-black text-gray-900 dark:text-white">
+                      {kpis.slaComplianceRate}%
+                    </span>
+                    <span className="text-[10px] text-gray-400 uppercase font-semibold">SLA Adherence</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Interactive Legend with click filters */}
+              <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-gray-100 dark:border-slate-800">
+                {donutData.map((item) => (
+                  <button
+                    key={item.name}
+                    onClick={() => {
+                      setActiveTab('matrix');
+                      if (item.name.includes('Breached') || item.name.includes('Overdue')) {
+                        setOnlyBreachedFilter(true);
+                      } else {
+                        setOnlyBreachedFilter(false);
+                      }
+                    }}
+                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800/60 transition-colors text-left"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                    <div className="min-w-0">
+                      <p className="text-gray-500 text-[10px] truncate">{item.name}</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{item.value}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {departments.map((dept) => (
-              <div
-                key={dept.id}
-                className="p-4 rounded-xl border border-gray-100 dark:border-slate-800/80 bg-gray-50/70 dark:bg-slate-800/40 space-y-3"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{dept.name}</h3>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">Head: {dept.headName}</p>
-                  </div>
-                  <span
-                    className={cn(
-                      'px-2 py-0.5 rounded-full text-xs font-bold',
-                      dept.slaComplianceRate >= 90
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                        : dept.slaComplianceRate >= 80
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                    )}
-                  >
-                    {dept.slaComplianceRate}% SLA
-                  </span>
+          {/* Bottom Row: Top 10 Agent Leaderboard & Department Comparison Bar Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Chart 3: Top Agent Leaderboard */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white flex items-center gap-2">
+                    <TrophyIcon className="w-5 h-5 text-amber-500" />
+                    Top Resolving Agents Leaderboard
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    Highest ticket volume resolved with SLA compliance rate
+                  </p>
                 </div>
-
-                <div className="w-full bg-gray-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full',
-                      dept.slaComplianceRate >= 90
-                        ? 'bg-emerald-500'
-                        : dept.slaComplianceRate >= 80
-                        ? 'bg-amber-500'
-                        : 'bg-rose-500'
-                    )}
-                    style={{ width: `${Math.min(100, Math.max(0, dept.slaComplianceRate))}%` }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1 border-t border-gray-200/60 dark:border-slate-700/60">
-                  <div>
-                    <p className="text-gray-400 text-[10px] uppercase">Resolved</p>
-                    <p className="font-bold text-gray-900 dark:text-white">
-                      {dept.resolvedCount} / {dept.totalTickets}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-[10px] uppercase">Breached</p>
-                    <p
-                      className={cn(
-                        'font-bold',
-                        dept.slaBreachedCount > 0 ? 'text-rose-600' : 'text-gray-900 dark:text-white'
-                      )}
-                    >
-                      {dept.slaBreachedCount}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-[10px] uppercase">MTTR</p>
-                    <p className="font-bold text-gray-900 dark:text-white">
-                      {formatDuration(dept.avgResolutionTimeMins)}
-                    </p>
-                  </div>
-                </div>
+                <button
+                  onClick={() => setActiveTab('matrix')}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                >
+                  View Full Table →
+                </button>
               </div>
-            ))}
+
+              {leaderboardData.length === 0 ? (
+                <div className="h-64 flex items-center justify-center text-gray-400 text-xs">
+                  No resolved tickets recorded for any agent yet.
+                </div>
+              ) : (
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={leaderboardData}
+                      layout="vertical"
+                      margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} className="dark:opacity-20" />
+                      <XAxis type="number" tick={{ fontSize: 11 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={85}
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(name) => (name.length > 12 ? `${name.slice(0, 10)}...` : name)}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderRadius: '10px',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '12px',
+                        }}
+                        formatter={(val: any, name: string, item: any) => [
+                          `${val} tickets (${item.payload.slaComplianceRate}% SLA)`,
+                          'Resolved',
+                        ]}
+                      />
+                      <Bar
+                        dataKey="resolvedCount"
+                        name="Resolved Tickets"
+                        fill="#6366F1"
+                        radius={[0, 6, 6, 0]}
+                        onClick={(entry: any) => {
+                          const matched = agents.find((a) => a.id === entry.id);
+                          if (matched) setSelectedAgent(matched);
+                        }}
+                        className="cursor-pointer"
+                      >
+                        {leaderboardData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              entry.slaComplianceRate >= 90
+                                ? '#10B981'
+                                : entry.slaComplianceRate >= 80
+                                ? '#3B82F6'
+                                : '#F43F5E'
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            {/* Chart 4: Department Resolution vs Breaches */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white flex items-center gap-2">
+                    <BuildingOfficeIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    Department Resolution & SLA Adherence
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    Compare tickets resolved vs breached across departments (Click bar to filter)
+                  </p>
+                </div>
+                {departmentId && (
+                  <button
+                    onClick={() => setDepartmentId('')}
+                    className="text-xs text-rose-500 hover:underline font-semibold"
+                  >
+                    Clear Filter
+                  </button>
+                )}
+              </div>
+
+              {departments.length === 0 ? (
+                <div className="h-64 flex items-center justify-center text-gray-400 text-xs">
+                  No department metrics available.
+                </div>
+              ) : (
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={departments}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" className="dark:opacity-20" />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(name) => (name.length > 10 ? `${name.slice(0, 8)}..` : name)}
+                      />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderRadius: '10px',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '5px' }} />
+                      <Bar
+                        dataKey="slaMetCount"
+                        name="Within SLA"
+                        fill="#10B981"
+                        radius={[4, 4, 0, 0]}
+                        onClick={(dept: any) => {
+                          setDepartmentId(dept.id);
+                          toast.success(`Filtered to ${dept.name}`);
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <Bar
+                        dataKey="slaBreachedCount"
+                        name="Breached SLA"
+                        fill="#F43F5E"
+                        radius={[4, 4, 0, 0]}
+                        onClick={(dept: any) => {
+                          setDepartmentId(dept.id);
+                          toast.success(`Filtered to ${dept.name}`);
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Agent Performance Matrix Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        {/* Table Header & Controls */}
-        <div className="p-5 border-b border-gray-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <UserGroupIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              Agent Resolution & SLA Matrix
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-slate-400">
-              Showing {processedAgents.length} agents • Click on any row to drill down into ticket-by-ticket SLA logs
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Search Input */}
-            <div className="relative min-w-[240px]">
-              <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search agent, emp ID, email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900 dark:text-white"
-              />
+      {/* TAB 2: AGENT RESOLUTION & SLA MATRIX TABLE VIEW */}
+      {activeTab === 'matrix' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden animate-in fade-in duration-200">
+          {/* Table Header & Controls */}
+          <div className="p-5 border-b border-gray-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <UserGroupIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                Agent Resolution & SLA Matrix
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Showing {processedAgents.length} agents • Click on any agent row to drill down into their ticket-by-ticket SLA logs
+              </p>
             </div>
 
-            {/* Performance Tier Filter */}
-            <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl">
-              {(
-                [
-                  { id: 'ALL', label: 'All' },
-                  { id: 'TOP_PERFORMER', label: 'Top (≥90%)' },
-                  { id: 'GOOD', label: 'Good (80-89%)' },
-                  { id: 'NEEDS_ATTENTION', label: 'Attention (<80%)' },
-                ] as const
-              ).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTier(t.id)}
-                  className={cn(
-                    'px-2.5 py-1 rounded-lg text-xs font-medium transition-all',
-                    selectedTier === t.id
-                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-semibold'
-                      : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
-                  )}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Search Input */}
+              <div className="relative min-w-[220px]">
+                <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search agent, emp ID, email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900 dark:text-white"
+                />
+              </div>
+
+              {/* Performance Tier Filter */}
+              <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl">
+                {(
+                  [
+                    { id: 'ALL', label: 'All' },
+                    { id: 'TOP_PERFORMER', label: 'Top (≥90%)' },
+                    { id: 'GOOD', label: 'Good (80-89%)' },
+                    { id: 'NEEDS_ATTENTION', label: 'Attention (<80%)' },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setSelectedTier(t.id);
+                      setOnlyBreachedFilter(false);
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg text-xs font-medium transition-all',
+                      selectedTier === t.id && !onlyBreachedFilter
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-semibold'
+                        : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Breached Only Filter Pill */}
+              <button
+                onClick={() => setOnlyBreachedFilter(!onlyBreachedFilter)}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5',
+                  onlyBreachedFilter
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-900 hover:bg-rose-100'
+                )}
+              >
+                <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+                <span>Breached Only</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Table Content */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+              <thead>
+                <tr className="bg-gray-50/80 dark:bg-slate-800/60 border-b border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-300 font-semibold uppercase text-[11px] tracking-wider">
+                  <th className="py-3 px-4">Agent Name & ID</th>
+                  <th className="py-3 px-4">Department</th>
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={() => handleSort('assignedCount')}
+                  >
+                    Assigned / Resolved {sortField === 'assignedCount' && (sortAsc ? '▲' : '▼')}
+                  </th>
+                  <th className="py-3 px-4">Open Backlog</th>
+                  <th className="py-3 px-4">SLA Met</th>
+                  <th className="py-3 px-4">SLA Breached</th>
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={() => handleSort('slaComplianceRate')}
+                  >
+                    SLA Compliance {sortField === 'slaComplianceRate' && (sortAsc ? '▲' : '▼')}
+                  </th>
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={() => handleSort('avgResolutionTimeMins')}
+                  >
+                    Avg MTTR {sortField === 'avgResolutionTimeMins' && (sortAsc ? '▲' : '▼')}
+                  </th>
+                  <th className="py-3 px-4">Performance Tier</th>
+                  <th className="py-3 px-4 text-right">Drill-Down</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-800/80 text-gray-700 dark:text-slate-300">
+                {processedAgents.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-gray-400">
+                      No agents matched the selected filters.
+                    </td>
+                  </tr>
+                ) : (
+                  processedAgents.map((agent) => (
+                    <tr
+                      key={agent.id}
+                      onClick={() => setSelectedAgent(agent)}
+                      className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                    >
+                      {/* Agent Name */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
+                            {getInitials(agent.name.split(' ')[0], agent.name.split(' ')[1] || '')}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900 dark:text-white truncate">{agent.name}</p>
+                            <p className="text-[11px] text-gray-400 font-mono">
+                              ID: {agent.employeeId} • {agent.jobTitle}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Department */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300">
+                          {agent.department?.name || 'General'}
+                        </span>
+                      </td>
+
+                      {/* Assigned vs Resolved */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900 dark:text-white">{agent.resolvedCount}</span>
+                            <span className="text-gray-400 text-xs">/ {agent.assignedCount}</span>
+                            <span className="text-xs text-gray-500 font-medium">({agent.resolutionRate}%)</span>
+                          </div>
+                          <div className="w-24 bg-gray-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                            <div
+                              className="bg-indigo-500 h-full"
+                              style={{ width: `${Math.min(100, Math.max(0, agent.resolutionRate))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Open Backlog */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold">{agent.openCount}</span>
+                          {agent.openBreachedCount > 0 && (
+                            <span
+                              className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400"
+                              title={`${agent.openBreachedCount} tickets overdue`}
+                            >
+                              {agent.openBreachedCount} Overdue
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* SLA Met */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <CheckCircleIcon className="w-4 h-4" />
+                          {agent.slaMetCount}
+                        </span>
+                      </td>
+
+                      {/* SLA Breached */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span
+                          className={cn(
+                            'font-semibold flex items-center gap-1',
+                            agent.slaBreachedCount > 0
+                              ? 'text-rose-600 dark:text-rose-400 font-bold'
+                              : 'text-gray-400'
+                          )}
+                        >
+                          {agent.slaBreachedCount > 0 && <XCircleIcon className="w-4 h-4" />}
+                          {agent.slaBreachedCount}
+                        </span>
+                      </td>
+
+                      {/* SLA Compliance % */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'px-2.5 py-0.5 rounded-full text-xs font-bold inline-block',
+                              agent.slaComplianceRate >= 90
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                                : agent.slaComplianceRate >= 80
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
+                            )}
+                          >
+                            {agent.slaComplianceRate}%
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* MTTR */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="font-mono text-xs">{formatDuration(agent.avgResolutionTimeMins)}</span>
+                      </td>
+
+                      {/* Performance Tier */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {agent.tier === 'TOP_PERFORMER' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            ★ Top Performer
+                          </span>
+                        )}
+                        {agent.tier === 'GOOD' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            ✔ On Track
+                          </span>
+                        )}
+                        {agent.tier === 'NEEDS_ATTENTION' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            ⚠ Needs Attention
+                          </span>
+                        )}
+                        {agent.tier === 'CRITICAL' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                            ✖ Critical Risk
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Action */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedAgent(agent);
+                          }}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                          title="View ticket SLA breakdown"
+                        >
+                          <EyeIcon className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DEPARTMENT BENCHMARKS VIEW */}
+      {activeTab === 'departments' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <BuildingOfficeIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  Department Operational Benchmarks
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Comprehensive performance, staffing, and SLA adherence across resolving units
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {departments.map((dept) => (
+                <div
+                  key={dept.id}
+                  onClick={() => {
+                    setDepartmentId(dept.id);
+                    setActiveTab('matrix');
+                    toast.success(`Filtered agent list to ${dept.name}`);
+                  }}
+                  className="p-5 rounded-2xl border border-gray-200 dark:border-slate-800 bg-gray-50/70 dark:bg-slate-800/40 space-y-3 cursor-pointer hover:border-indigo-400 transition-all hover:shadow-md"
                 >
-                  {t.label}
-                </button>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900 dark:text-white text-base">{dept.name}</h3>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">Department Head: {dept.headName}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        'px-2.5 py-1 rounded-full text-xs font-black shadow-sm',
+                        dept.slaComplianceRate >= 90
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : dept.slaComplianceRate >= 80
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                      )}
+                    >
+                      {dept.slaComplianceRate}% SLA
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-gray-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full',
+                        dept.slaComplianceRate >= 90
+                          ? 'bg-emerald-500'
+                          : dept.slaComplianceRate >= 80
+                          ? 'bg-amber-500'
+                          : 'bg-rose-500'
+                      )}
+                      style={{ width: `${Math.min(100, Math.max(0, dept.slaComplianceRate))}%` }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs pt-2 border-t border-gray-200/60 dark:border-slate-700/60">
+                    <div>
+                      <p className="text-gray-400 text-[10px] uppercase">Agents</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{dept.agentCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-[10px] uppercase">Resolved</p>
+                      <p className="font-bold text-gray-900 dark:text-white">
+                        {dept.resolvedCount} / {dept.totalTickets}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-[10px] uppercase">Breached</p>
+                      <p
+                        className={cn(
+                          'font-bold',
+                          dept.slaBreachedCount > 0 ? 'text-rose-600' : 'text-gray-900 dark:text-white'
+                        )}
+                      >
+                        {dept.slaBreachedCount}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-[10px] uppercase">MTTR</p>
+                      <p className="font-bold text-gray-900 dark:text-white">
+                        {formatDuration(dept.avgResolutionTimeMins)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
         </div>
+      )}
 
-        {/* Table Content */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs sm:text-sm">
-            <thead>
-              <tr className="bg-gray-50/80 dark:bg-slate-800/60 border-b border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-300 font-semibold uppercase text-[11px] tracking-wider">
-                <th className="py-3 px-4">Agent Name & ID</th>
-                <th className="py-3 px-4">Department</th>
-                <th
-                  className="py-3 px-4 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
-                  onClick={() => handleSort('assignedCount')}
-                >
-                  Assigned / Resolved {sortField === 'assignedCount' && (sortAsc ? '▲' : '▼')}
-                </th>
-                <th className="py-3 px-4">Open Backlog</th>
-                <th className="py-3 px-4">SLA Met</th>
-                <th className="py-3 px-4">SLA Breached</th>
-                <th
-                  className="py-3 px-4 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
-                  onClick={() => handleSort('slaComplianceRate')}
-                >
-                  SLA Compliance {sortField === 'slaComplianceRate' && (sortAsc ? '▲' : '▼')}
-                </th>
-                <th
-                  className="py-3 px-4 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
-                  onClick={() => handleSort('avgResolutionTimeMins')}
-                >
-                  Avg MTTR {sortField === 'avgResolutionTimeMins' && (sortAsc ? '▲' : '▼')}
-                </th>
-                <th className="py-3 px-4">Performance Tier</th>
-                <th className="py-3 px-4 text-right">Drill-Down</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-slate-800/80 text-gray-700 dark:text-slate-300">
-              {processedAgents.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-400">
-                    No agents matched the selected filters.
-                  </td>
-                </tr>
-              ) : (
-                processedAgents.map((agent) => (
-                  <tr
-                    key={agent.id}
-                    onClick={() => setSelectedAgent(agent)}
-                    className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
-                  >
-                    {/* Agent Name */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
-                          {getInitials(agent.name.split(' ')[0], agent.name.split(' ')[1] || '')}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-gray-900 dark:text-white truncate">{agent.name}</p>
-                          <p className="text-[11px] text-gray-400 font-mono">
-                            ID: {agent.employeeId} • {agent.jobTitle}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+      {/* TAB 4: SLA POLICY TARGETS VIEW */}
+      {activeTab === 'policies' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <ClockIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  SLA Policy Target vs Actual Resolution Speed
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Audit defined service level deadlines against actual resolution times across departments
+                </p>
+              </div>
+            </div>
 
-                    {/* Department */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300">
-                        {agent.department?.name || 'General'}
-                      </span>
-                    </td>
-
-                    {/* Assigned vs Resolved */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-900 dark:text-white">{agent.resolvedCount}</span>
-                          <span className="text-gray-400 text-xs">/ {agent.assignedCount}</span>
-                          <span className="text-xs text-gray-500 font-medium">({agent.resolutionRate}%)</span>
-                        </div>
-                        <div className="w-24 bg-gray-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
-                          <div
-                            className="bg-indigo-500 h-full"
-                            style={{ width: `${Math.min(100, Math.max(0, agent.resolutionRate))}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Open Backlog */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold">{agent.openCount}</span>
-                        {agent.openBreachedCount > 0 && (
-                          <span
-                            className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400"
-                            title={`${agent.openBreachedCount} tickets overdue`}
-                          >
-                            {agent.openBreachedCount} Overdue
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* SLA Met */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <CheckCircleIcon className="w-4 h-4" />
-                        {agent.slaMetCount}
-                      </span>
-                    </td>
-
-                    {/* SLA Breached */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span
-                        className={cn(
-                          'font-semibold flex items-center gap-1',
-                          agent.slaBreachedCount > 0
-                            ? 'text-rose-600 dark:text-rose-400 font-bold'
-                            : 'text-gray-400'
-                        )}
-                      >
-                        {agent.slaBreachedCount > 0 && <XCircleIcon className="w-4 h-4" />}
-                        {agent.slaBreachedCount}
-                      </span>
-                    </td>
-
-                    {/* SLA Compliance % */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 dark:bg-slate-800/60 border-b border-gray-200 dark:border-slate-800 text-gray-500 uppercase text-[11px] font-semibold">
+                    <th className="py-3 px-4">Policy Name</th>
+                    <th className="py-3 px-4">Priority</th>
+                    <th className="py-3 px-4">Target Resolution</th>
+                    <th className="py-3 px-4">Target 1st Response</th>
+                    <th className="py-3 px-4">Actual MTTR</th>
+                    <th className="py-3 px-4">Tickets Handled</th>
+                    <th className="py-3 px-4">Compliance %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                  {slaPolicies.map((pol) => (
+                    <tr key={pol.id} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 font-bold text-gray-900 dark:text-white">{pol.name}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 dark:bg-slate-800">
+                          {pol.priority}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono font-medium">{formatDuration(pol.targetResolutionMins)}</td>
+                      <td className="py-3 px-4 font-mono font-medium">{formatDuration(pol.targetResponseMins)}</td>
+                      <td className="py-3 px-4 font-mono font-bold">{formatDuration(pol.avgResolutionTimeMins)}</td>
+                      <td className="py-3 px-4">
+                        {pol.resolvedCount} / {pol.totalTickets}
+                      </td>
+                      <td className="py-3 px-4">
                         <span
                           className={cn(
                             'px-2.5 py-0.5 rounded-full text-xs font-bold inline-block',
-                            agent.slaComplianceRate >= 90
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
-                              : agent.slaComplianceRate >= 80
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
+                            pol.slaComplianceRate >= 90
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : pol.slaComplianceRate >= 80
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                           )}
                         >
-                          {agent.slaComplianceRate}%
+                          {pol.slaComplianceRate}%
                         </span>
-                      </div>
-                    </td>
-
-                    {/* MTTR */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="font-mono text-xs">{formatDuration(agent.avgResolutionTimeMins)}</span>
-                    </td>
-
-                    {/* Performance Tier */}
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {agent.tier === 'TOP_PERFORMER' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                          ★ Top Performer
-                        </span>
-                      )}
-                      {agent.tier === 'GOOD' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                          ✔ On Track
-                        </span>
-                      )}
-                      {agent.tier === 'NEEDS_ATTENTION' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                          ⚠ Needs Attention
-                        </span>
-                      )}
-                      {agent.tier === 'CRITICAL' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                          ✖ Critical Risk
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Action */}
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedAgent(agent);
-                        }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-                        title="View ticket SLA breakdown"
-                      >
-                        <EyeIcon className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* SLA Policy Breakdown Overview */}
-      {slaPolicies.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-gray-200 dark:border-slate-800 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <ClockIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              SLA Policy Performance Overview
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-slate-400">
-              Audit SLA policy targets against actual operational resolution performance
-            </p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
-              <thead>
-                <tr className="bg-gray-50/80 dark:bg-slate-800/60 border-b border-gray-200 dark:border-slate-800 text-gray-500 uppercase text-[11px] font-semibold">
-                  <th className="py-2.5 px-4">Policy Name</th>
-                  <th className="py-2.5 px-4">Priority</th>
-                  <th className="py-2.5 px-4">Target Resolution</th>
-                  <th className="py-2.5 px-4">Actual MTTR</th>
-                  <th className="py-2.5 px-4">Resolved</th>
-                  <th className="py-2.5 px-4">Compliance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                {slaPolicies.map((pol) => (
-                  <tr key={pol.id}>
-                    <td className="py-2.5 px-4 font-semibold text-gray-900 dark:text-white">{pol.name}</td>
-                    <td className="py-2.5 px-4">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 dark:bg-slate-800">
-                        {pol.priority}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 font-mono">{formatDuration(pol.targetResolutionMins)}</td>
-                    <td className="py-2.5 px-4 font-mono">{formatDuration(pol.avgResolutionTimeMins)}</td>
-                    <td className="py-2.5 px-4">
-                      {pol.resolvedCount} / {pol.totalTickets}
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <span
-                        className={cn(
-                          'px-2 py-0.5 rounded-full text-xs font-bold',
-                          pol.slaComplianceRate >= 90
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : pol.slaComplianceRate >= 80
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-rose-600 dark:text-rose-400'
-                        )}
-                      >
-                        {pol.slaComplianceRate}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -970,7 +1534,8 @@ export default function ManagementDashboard() {
               <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800">
                 <p className="text-[10px] text-gray-400 uppercase font-semibold">Resolved / Assigned</p>
                 <p className="text-xl font-black text-gray-900 dark:text-white">
-                  {selectedAgent.resolvedCount} <span className="text-xs text-gray-400 font-normal">/ {selectedAgent.assignedCount}</span>
+                  {selectedAgent.resolvedCount}{' '}
+                  <span className="text-xs text-gray-400 font-normal">/ {selectedAgent.assignedCount}</span>
                 </p>
               </div>
               <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800">
@@ -981,7 +1546,12 @@ export default function ManagementDashboard() {
               </div>
               <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800">
                 <p className="text-[10px] text-gray-400 uppercase font-semibold">SLA Breaches</p>
-                <p className={cn('text-xl font-black', selectedAgent.slaBreachedCount > 0 ? 'text-rose-600' : 'text-emerald-600')}>
+                <p
+                  className={cn(
+                    'text-xl font-black',
+                    selectedAgent.slaBreachedCount > 0 ? 'text-rose-600' : 'text-emerald-600'
+                  )}
+                >
                   {selectedAgent.slaBreachedCount}
                 </p>
               </div>
