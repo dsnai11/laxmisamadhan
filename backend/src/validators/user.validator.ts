@@ -37,7 +37,7 @@ export const bulkCreateUserSchema = z.object({
     departmentId: z.string().optional().nullable(),
     temporaryPassword: z.string().optional().nullable(),
     sendWelcomeEmail: z.boolean().default(false),
-  })).min(1).max(1000),
+  })).min(1).max(10000),
 });
 
 export const updateUserSchema = z.object({
