@@ -6,6 +6,7 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/build-android.yml'
+      - 'pnpm-workspace.yaml'
   workflow_dispatch:
 
 jobs:
@@ -35,7 +36,7 @@ jobs:
 
       - name: Install Frontend Dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-workspace
 
       - name: Build Web Frontend
         working-directory: frontend

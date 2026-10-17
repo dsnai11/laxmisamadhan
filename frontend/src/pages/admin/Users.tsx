@@ -37,8 +37,10 @@ interface BulkUserRow {
   departmentName: string;
   departmentRaiserName: string;
   designations: string;
-  email: string;
+  branch: string;
+  state: string;
   phone: string;
+  email: string;
   role: string;
   temporaryPassword: string;
 }
@@ -67,8 +69,8 @@ export default function AdminUsers() {
   const [bulkRows, setBulkRows] = useState<BulkUserRow[]>([]);
   const [bulkDefaultRole, setBulkDefaultRole] = useState('RAISER');
   const [bulkDefaultDept, setBulkDefaultDept] = useState('');
-  const [idPrefix, setIdPrefix] = useState('LIFC-');
-  const [idStartNum, setIdStartNum] = useState(1001);
+  const [idPrefix, setIdPrefix] = useState('100');
+  const [idStartNum, setIdStartNum] = useState(1);
   const [showIdGen, setShowIdGen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,25 +113,29 @@ export default function AdminUsers() {
     setBulkRows([
       {
         id: '1',
-        employeeId: `${idPrefix}${idStartNum}`,
-        firstName: '',
-        departmentName: defDeptName,
-        departmentRaiserName: '',
-        designations: '',
-        email: '',
-        phone: '',
+        employeeId: '1001',
+        firstName: 'PUSHPENDRA PRATAP SINGH',
+        departmentName: '',
+        departmentRaiserName: 'COLLECTION',
+        designations: 'MANAGER',
+        branch: 'ROSHAN TOWER JAIPUR HO',
+        state: 'RAJASTHAN',
+        phone: '9799954635',
+        email: 'pushpendra.gora@lifc.in',
         role: defRole,
         temporaryPassword: 'LaxmiUser@123',
       },
       {
         id: '2',
-        employeeId: `${idPrefix}${idStartNum + 1}`,
+        employeeId: '1002',
         firstName: '',
         departmentName: defDeptName,
         departmentRaiserName: '',
         designations: '',
-        email: '',
+        branch: '',
+        state: '',
         phone: '',
+        email: '',
         role: defRole,
         temporaryPassword: 'LaxmiUser@123',
       },
@@ -181,6 +187,7 @@ export default function AdminUsers() {
   };
 
   // Bulk handlers
+  // Bulk handlers
   const addBulkRow = () => {
     const nextIdx = bulkRows.length;
     const nextId = `${idPrefix}${idStartNum + nextIdx}`;
@@ -193,8 +200,10 @@ export default function AdminUsers() {
         departmentName: bulkDefaultDept,
         departmentRaiserName: '',
         designations: '',
-        email: '',
+        branch: '',
+        state: '',
         phone: '',
+        email: '',
         role: bulkDefaultRole,
         temporaryPassword: 'LaxmiUser@123',
       },
@@ -233,8 +242,8 @@ export default function AdminUsers() {
   };
 
   const downloadCSVTemplate = () => {
-    const csvHeader = 'employeeId,firstName,department name,department raiser name,desginations,email,phone,role,temporaryPassword\n';
-    const sampleRows = `LIFC-1001,Rahul Sharma,Finance,Amit Patel,Senior Manager,rahul.sharma@laxmi.com,9876543210,RAISER,LaxmiUser@123\nLIFC-1002,Priya Verma,IT Support,Vikas Gupta,Executive,priya.verma@laxmi.com,9876543211,AGENT,LaxmiUser@123\n`;
+    const csvHeader = 'employeeId,firstName,department name,department raiser name,desginations,BRANCH,STATE,MOBILE NO,Mail Id\n';
+    const sampleRows = `1001,PUSHPENDRA PRATAP SINGH,,COLLECTION,MANAGER,ROSHAN TOWER JAIPUR HO,RAJASTHAN,9799954635,pushpendra.gora@lifc.in\n1002,PRIYA VERMA,IT SUPPORT,VIKAS GUPTA,EXECUTIVE,MUMBAI HO,MAHARASHTRA,9876543211,priya.verma@lifc.in\n`;
     const blob = new Blob([csvHeader + sampleRows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -256,11 +265,12 @@ export default function AdminUsers() {
 
       const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
       if (lines.length < 2) {
-        toast.error('CSV file is empty or missing headers');
+        toast.error('File is empty or missing headers');
         return;
       }
 
-      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/[\s_-]+/g, ''));
+      const delimiter = lines[0].includes('\t') ? '\t' : ',';
+      const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/[\s_-]+/g, ''));
 
       const findCol = (...aliases: string[]) => {
         for (const alias of aliases) {
@@ -271,22 +281,24 @@ export default function AdminUsers() {
         return -1;
       };
 
-      const idIdx = findCol('employeeid', 'employee', 'empid', 'id');
+      const idIdx = findCol('employeeid', 'employee', 'empid', 'id', 'emplo');
       const fnIdx = findCol('firstname', 'name', 'fullname', 'first_name');
       const deptIdx = findCol('departmentname', 'department', 'deptname', 'dept');
       const raiserIdx = findCol('departmentraisername', 'departmentraiser', 'raisername', 'raiser');
       const desigIdx = findCol('desginations', 'designations', 'designation', 'jobtitle', 'title');
-      const emailIdx = findCol('email', 'emailaddress', 'mail');
-      const phoneIdx = findCol('phone', 'mobile', 'phonenumber');
+      const branchIdx = findCol('branch', 'branchname', 'site', 'location');
+      const stateIdx = findCol('state', 'region');
+      const phoneIdx = findCol('mobileno', 'mobile', 'phone', 'phonenumber');
+      const emailIdx = findCol('mailid', 'mail_id', 'email', 'emailaddress', 'mail');
       const roleIdx = findCol('role', 'userrole');
       const passIdx = findCol('temporarypassword', 'temppassword', 'password', 'pass');
 
-      const usePositional = emailIdx === -1;
+      const usePositional = emailIdx === -1 && fnIdx === -1;
 
       const parsedRows: BulkUserRow[] = [];
       for (let i = 1; i < lines.length; i++) {
         const rawLine = lines[i];
-        const cols = rawLine.split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+        const cols = rawLine.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ''));
         if (cols.length < 2) continue;
 
         const employeeId = (usePositional ? cols[0] : idIdx !== -1 ? cols[idIdx] : '') || `${idPrefix}${idStartNum + i - 1}`;
@@ -294,10 +306,12 @@ export default function AdminUsers() {
         const departmentName = (usePositional ? cols[2] : (deptIdx !== -1 ? cols[deptIdx] : '')) || bulkDefaultDept;
         const departmentRaiserName = usePositional ? cols[3] : (raiserIdx !== -1 ? cols[raiserIdx] : '');
         const designations = usePositional ? cols[4] : (desigIdx !== -1 ? cols[desigIdx] : '');
-        const email = usePositional ? cols[5] : (emailIdx !== -1 ? cols[emailIdx] : '');
-        const phone = usePositional ? cols[6] : (phoneIdx !== -1 ? cols[phoneIdx] : '');
-        const roleVal = usePositional ? cols[7] : (roleIdx !== -1 ? cols[roleIdx] : '');
-        const temporaryPassword = (usePositional ? cols[8] : (passIdx !== -1 ? cols[passIdx] : '')) || 'LaxmiUser@123';
+        const branch = usePositional ? cols[5] : (branchIdx !== -1 ? cols[branchIdx] : '');
+        const state = usePositional ? cols[6] : (stateIdx !== -1 ? cols[stateIdx] : '');
+        const phone = usePositional ? cols[7] : (phoneIdx !== -1 ? cols[phoneIdx] : '');
+        const email = usePositional ? cols[8] : (emailIdx !== -1 ? cols[emailIdx] : '');
+        const roleVal = roleIdx !== -1 && cols[roleIdx] ? cols[roleIdx] : bulkDefaultRole;
+        const temporaryPassword = (passIdx !== -1 && cols[passIdx] ? cols[passIdx] : '') || 'LaxmiUser@123';
 
         if (!email && !firstName) continue;
 
@@ -308,20 +322,22 @@ export default function AdminUsers() {
           departmentName: departmentName || '',
           departmentRaiserName: departmentRaiserName || '',
           designations: designations || '',
-          email: email || '',
+          branch: branch || '',
+          state: state || '',
           phone: phone || '',
+          email: email || '',
           role: roleVal ? roleVal.toUpperCase().replace(/\s+/g, '_') : bulkDefaultRole,
           temporaryPassword,
         });
       }
 
       if (parsedRows.length === 0) {
-        toast.error('No valid user data found in CSV');
+        toast.error('No valid user data found in file');
         return;
       }
 
       setBulkRows(parsedRows);
-      toast.success(`Loaded ${parsedRows.length} users from CSV with User IDs`);
+      toast.success(`Loaded ${parsedRows.length} users successfully`);
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -330,7 +346,7 @@ export default function AdminUsers() {
   const executeBulkCreate = async () => {
     const validUsers = bulkRows.filter((r) => r.firstName.trim() && r.email.trim());
     if (validUsers.length === 0) {
-      return toast.error('Please enter at least one valid user with first name and email');
+      return toast.error('Please enter at least one valid user with First Name and Mail Id');
     }
 
     setBulkSaving(true);
@@ -341,8 +357,11 @@ export default function AdminUsers() {
         departmentName: r.departmentName?.trim() || undefined,
         departmentRaiserName: r.departmentRaiserName?.trim() || undefined,
         designations: r.designations?.trim() || undefined,
-        email: r.email.trim(),
+        branch: r.branch?.trim() || undefined,
+        state: r.state?.trim() || undefined,
         phone: r.phone?.trim() || undefined,
+        mobile: r.phone?.trim() || undefined,
+        email: r.email.trim(),
         role: r.role || 'RAISER',
         temporaryPassword: r.temporaryPassword?.trim() || 'LaxmiUser@123',
         sendWelcomeEmail: false,
@@ -670,19 +689,21 @@ export default function AdminUsers() {
 
           {/* User Rows Table */}
           <div className="max-h-[380px] overflow-y-auto overflow-x-auto border border-gray-200 dark:border-slate-800 rounded-lg scrollbar-thin">
-            <table className="w-full text-xs text-left text-gray-700 dark:text-slate-200 min-w-[1020px]">
+            <table className="w-full text-xs text-left text-gray-700 dark:text-slate-200 min-w-[1300px]">
               <thead className="bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 font-semibold uppercase sticky top-0 z-10 border-b border-gray-200 dark:border-slate-700 whitespace-nowrap">
                 <tr>
                   <th className="p-2 w-8">#</th>
                   <th className="p-2 w-28">Employee ID</th>
                   <th className="p-2 w-36">First Name *</th>
-                  <th className="p-2 w-36">Department Name</th>
+                  <th className="p-2 w-32">Department Name</th>
                   <th className="p-2 w-36">Department Raiser Name</th>
-                  <th className="p-2 w-32">Designations</th>
-                  <th className="p-2 w-44">Email *</th>
-                  <th className="p-2 w-28">Phone</th>
+                  <th className="p-2 w-28">Designations</th>
+                  <th className="p-2 w-36">Branch</th>
+                  <th className="p-2 w-28">State</th>
+                  <th className="p-2 w-28">Mobile No</th>
+                  <th className="p-2 w-44">Mail Id *</th>
                   <th className="p-2 w-28">Role</th>
-                  <th className="p-2 w-28">Temporary Password</th>
+                  <th className="p-2 w-28">Temp Pass</th>
                   <th className="p-2 w-10"></th>
                 </tr>
               </thead>
@@ -693,7 +714,7 @@ export default function AdminUsers() {
                     <td className="p-1">
                       <input
                         className="w-full input text-xs py-1 px-2 font-mono font-medium text-blue-700 bg-blue-50/40 dark:bg-blue-950/40 dark:text-blue-300"
-                        placeholder="e.g. LIFC-1001"
+                        placeholder="e.g. 1001"
                         value={row.employeeId || ''}
                         onChange={(e) => updateBulkRow(row.id, 'employeeId', e.target.value)}
                       />
@@ -710,7 +731,7 @@ export default function AdminUsers() {
                       <input
                         list="bulk-dept-options"
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="e.g. Finance"
+                        placeholder="e.g. COLLECTION"
                         value={row.departmentName}
                         onChange={(e) => updateBulkRow(row.id, 'departmentName', e.target.value)}
                       />
@@ -718,7 +739,7 @@ export default function AdminUsers() {
                     <td className="p-1">
                       <input
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="e.g. Priya Singh"
+                        placeholder="e.g. COLLECTION"
                         value={row.departmentRaiserName}
                         onChange={(e) => updateBulkRow(row.id, 'departmentRaiserName', e.target.value)}
                       />
@@ -726,26 +747,42 @@ export default function AdminUsers() {
                     <td className="p-1">
                       <input
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="e.g. Senior Manager"
+                        placeholder="e.g. MANAGER"
                         value={row.designations}
                         onChange={(e) => updateBulkRow(row.id, 'designations', e.target.value)}
                       />
                     </td>
                     <td className="p-1">
                       <input
-                        type="email"
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="email@laxmi.com *"
-                        value={row.email}
-                        onChange={(e) => updateBulkRow(row.id, 'email', e.target.value)}
+                        placeholder="e.g. ROSHAN TOWER JAIPUR HO"
+                        value={row.branch || ''}
+                        onChange={(e) => updateBulkRow(row.id, 'branch', e.target.value)}
                       />
                     </td>
                     <td className="p-1">
                       <input
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="Phone"
+                        placeholder="e.g. RAJASTHAN"
+                        value={row.state || ''}
+                        onChange={(e) => updateBulkRow(row.id, 'state', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="9799954635"
                         value={row.phone}
                         onChange={(e) => updateBulkRow(row.id, 'phone', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="email"
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="pushpendra.gora@lifc.in *"
+                        value={row.email}
+                        onChange={(e) => updateBulkRow(row.id, 'email', e.target.value)}
                       />
                     </td>
                     <td className="p-1">

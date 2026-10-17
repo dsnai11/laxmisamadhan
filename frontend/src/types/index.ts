@@ -8,7 +8,10 @@ export interface User {
   employeeId?: string;
   jobTitle?: string;
   site?: string;
+  branch?: string;
+  state?: string;
   reportingManagerName?: string;
+  departmentRaiserName?: string;
   avatar?: string;
   role: UserRole;
   roles?: UserRole[];

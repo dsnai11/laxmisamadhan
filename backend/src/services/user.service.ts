@@ -22,6 +22,8 @@ interface CreateUserData {
   departmentName?: string;
   departmentRaiserName?: string;
   reportingManagerName?: string;
+  branch?: string;
+  state?: string;
   role?: any;
   roles?: UserRole[];
   status?: UserStatus;
@@ -40,6 +42,8 @@ interface UpdateUserData {
   employeeId?: string | null;
   jobTitle?: string | null;
   site?: string | null;
+  branch?: string | null;
+  state?: string | null;
   reportingManagerName?: string | null;
   departmentRaiserName?: string | null;
   role?: UserRole;
@@ -106,6 +110,10 @@ class UserService {
     const jobTitle = (data.jobTitle || data.designations || data.desginations || '').trim() || null;
     const departmentRaiserName = (data.departmentRaiserName || '').trim() || null;
     const reportingManagerName = (data.reportingManagerName || departmentRaiserName || '').trim() || null;
+    const branch = (data.branch || '').trim() || null;
+    const state = (data.state || '').trim() || null;
+    const phone = (data.phone || data.mobile || '').trim() || null;
+    const mobile = (data.mobile || data.phone || '').trim() || null;
 
     let roles: UserRole[] = [];
     const validRoles = Object.values(UserRole);
@@ -125,10 +133,13 @@ class UserService {
         passwordHash,
         firstName,
         lastName,
-        phone: data.phone?.trim() || null,
-        mobile: data.mobile?.trim() || null,
+        phone,
+        mobile,
         employeeId: data.employeeId?.trim() || null,
         jobTitle,
+        site: branch || null,
+        branch,
+        state,
         departmentRaiserName,
         reportingManagerName,
         role: primaryRole,
@@ -148,6 +159,9 @@ class UserService {
         mobile: true,
         employeeId: true,
         jobTitle: true,
+        site: true,
+        branch: true,
+        state: true,
         departmentRaiserName: true,
         reportingManagerName: true,
         role: true,
@@ -214,6 +228,9 @@ class UserService {
           mobile: true,
           employeeId: true,
           jobTitle: true,
+          site: true,
+          branch: true,
+          state: true,
           departmentRaiserName: true,
           reportingManagerName: true,
           role: true,
@@ -254,6 +271,8 @@ class UserService {
         employeeId: true,
         jobTitle: true,
         site: true,
+        branch: true,
+        state: true,
         reportingManagerName: true,
         departmentRaiserName: true,
         role: true,
@@ -335,6 +354,8 @@ class UserService {
         employeeId: true,
         jobTitle: true,
         site: true,
+        branch: true,
+        state: true,
         reportingManagerName: true,
         departmentRaiserName: true,
         role: true,

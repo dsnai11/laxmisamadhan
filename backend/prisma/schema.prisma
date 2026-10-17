@@ -109,6 +109,8 @@ model User {
   employeeId        String?
   jobTitle          String?
   site              String?
+  branch            String?
+  state             String?
   reportingManagerName String?
   departmentRaiserName String?
   avatar            String?

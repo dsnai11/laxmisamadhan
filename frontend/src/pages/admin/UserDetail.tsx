@@ -44,6 +44,8 @@ export default function AdminUserDetail() {
     employeeId: string;
     jobTitle: string;
     site: string;
+    branch: string;
+    state: string;
     reportingManagerName: string;
     departmentRaiserName: string;
     departmentId: string;
@@ -59,6 +61,8 @@ export default function AdminUserDetail() {
     employeeId: '',
     jobTitle: '',
     site: '',
+    branch: '',
+    state: '',
     reportingManagerName: '',
     departmentRaiserName: '',
     departmentId: '',
@@ -83,7 +87,9 @@ export default function AdminUserDetail() {
         mobile: user.mobile || '',
         employeeId: user.employeeId || '',
         jobTitle: user.jobTitle || '',
-        site: user.site || '',
+        site: user.branch || user.site || '',
+        branch: user.branch || user.site || '',
+        state: user.state || '',
         reportingManagerName: user.reportingManagerName || '',
         departmentRaiserName: user.departmentRaiserName || '',
         departmentId: user.departmentId || '',
@@ -126,11 +132,13 @@ export default function AdminUserDetail() {
         mobile: form.mobile.trim() || null,
         employeeId: form.employeeId.trim() || null,
         jobTitle: form.jobTitle.trim() || null,
-        site: form.site.trim() || null,
+        site: form.branch.trim() || form.site.trim() || null,
+        branch: form.branch.trim() || form.site.trim() || null,
+        state: form.state.trim() || null,
         reportingManagerName: form.reportingManagerName.trim() || null,
         departmentRaiserName: form.departmentRaiserName.trim() || null,
         ...(isOrgWide ? { departmentId: (form.departmentId || null) as any } : {}),
-      });
+      } as any);
       const oldRoles = ((user.roles && user.roles.length > 0 ? user.roles : [user.role]) as string[]).slice().sort();
       const newRoles = form.roles.slice().sort();
       if (JSON.stringify(oldRoles) !== JSON.stringify(newRoles)) {
@@ -228,8 +236,11 @@ export default function AdminUserDetail() {
         <Field label="Department Raiser Name">
           <input className="input" disabled={!editable} placeholder="e.g. Priya Singh" value={form.departmentRaiserName} onChange={(e) => setForm({ ...form, departmentRaiserName: e.target.value })} />
         </Field>
-        <Field label="Site / Branch / Location">
-          <input className="input" disabled={!editable} placeholder="e.g. Mumbai Head Office" value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })} />
+        <Field label="Branch / Location">
+          <input className="input" disabled={!editable} placeholder="e.g. ROSHAN TOWER JAIPUR HO" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value, site: e.target.value })} />
+        </Field>
+        <Field label="State">
+          <input className="input" disabled={!editable} placeholder="e.g. RAJASTHAN" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
         </Field>
         <Field label="Reporting Manager Name">
           <input className="input" disabled={!editable} placeholder="e.g. Rajesh Kumar" value={form.reportingManagerName} onChange={(e) => setForm({ ...form, reportingManagerName: e.target.value })} />
