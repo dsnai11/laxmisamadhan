@@ -9,6 +9,7 @@ export const initNativeApp = async (isDarkMode: boolean) => {
   if (!isNative) return;
 
   try {
+    document.body.classList.add('is-native');
     // Configure Keyboard resize
     await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
   } catch (err) {

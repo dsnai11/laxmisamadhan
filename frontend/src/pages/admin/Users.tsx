@@ -48,7 +48,14 @@ interface BulkUserRow {
 export default function AdminUsers() {
   const { user: me } = useAuth();
   const qc = useQueryClient();
-  const isOrgWide = ['SUPER_ADMIN', 'ADMIN'].includes(me?.role || '');
+  const myRoles = Array.from(new Set([
+    ...(me?.role ? [me.role] : []),
+    ...((me as any)?.roles || []),
+  ]));
+  const isSuperAdmin = myRoles.includes('SUPER_ADMIN');
+  const isOrgWide = isSuperAdmin || myRoles.includes('ADMIN');
+  const roles = isSuperAdmin ? ROLE_OPTIONS : assignableRoles(me?.role);
+
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -60,6 +67,7 @@ export default function AdminUsers() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Delete user state
   const [deletingUser, setDeletingUser] = useState<any | null>(null);
@@ -87,12 +95,6 @@ export default function AdminUsers() {
     placeholderData: keepPreviousData,
   });
   const users: any[] = data?.data || [];
-  const myRoles = Array.from(new Set([
-    ...(me?.role ? [me.role] : []),
-    ...((me as any)?.roles || []),
-  ]));
-  const isSuperAdmin = myRoles.includes('SUPER_ADMIN');
-  const roles = isSuperAdmin ? ROLE_OPTIONS : assignableRoles(me?.role);
 
   const openCreate = () => {
     const initialRole = roles.includes('RAISER') ? 'RAISER' : roles[0] || 'RAISER';
@@ -350,6 +352,8 @@ export default function AdminUsers() {
     }
 
     setBulkSaving(true);
+    setImportProgress({ current: 0, total: validUsers.length });
+
     try {
       const payload = validUsers.map((r) => ({
         employeeId: r.employeeId?.trim() || undefined,
@@ -367,23 +371,35 @@ export default function AdminUsers() {
         sendWelcomeEmail: false,
       }));
 
-      const res = await api.bulkCreateUsers(payload);
-      if (res.success > 0) {
-        toast.success(`Successfully created ${res.success} user(s)!`);
-      }
-      if (res.failed > 0) {
-        const errorMsgs = (res.errors || []).map((err: any) => `${err.name || err.email}: ${err.error}`).slice(0, 3).join('; ');
-        toast.error(`${res.failed} user(s) failed. ${errorMsgs}`);
+      const BATCH_SIZE = 100;
+      let totalSuccess = 0;
+      let totalFailed = 0;
+      const allErrors: any[] = [];
+
+      for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+        const chunk = payload.slice(i, i + BATCH_SIZE);
+        const res = await api.bulkCreateUsers(chunk);
+        totalSuccess += res.success || 0;
+        totalFailed += res.failed || 0;
+        if (res.errors) allErrors.push(...res.errors);
+        setImportProgress({ current: Math.min(i + BATCH_SIZE, payload.length), total: payload.length });
       }
 
-      if (res.success > 0) {
+      if (totalSuccess > 0) {
+        toast.success(`Successfully imported ${totalSuccess} user(s)!`);
         setBulkOpen(false);
+        setBulkRows([]);
         qc.invalidateQueries({ queryKey: ['admin-users'] });
+      }
+      if (totalFailed > 0) {
+        const errorMsgs = allErrors.map((err: any) => `${err.name || err.email}: ${err.error}`).slice(0, 3).join('; ');
+        toast.error(`${totalFailed} user(s) failed. ${errorMsgs}`);
       }
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setBulkSaving(false);
+      setImportProgress(null);
     }
   };
 
@@ -586,16 +602,35 @@ export default function AdminUsers() {
       {/* Bulk User Modal */}
       <Modal
         open={bulkOpen}
-        onClose={() => setBulkOpen(false)}
+        onClose={() => !bulkSaving && setBulkOpen(false)}
         title="Bulk User Creation & ID Management"
         wide
         footer={
-          <>
-            <button className="btn-secondary" onClick={() => setBulkOpen(false)}>Cancel</button>
-            <button className="btn-primary" disabled={bulkSaving} onClick={executeBulkCreate}>
-              {bulkSaving ? 'Importing Users...' : `Import ${bulkRows.filter(r => r.firstName && r.email).length} Users`}
-            </button>
-          </>
+          <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
+            {importProgress ? (
+              <div className="w-full sm:w-auto flex-1 flex items-center gap-2">
+                <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-primary-600 h-2.5 rounded-full transition-all duration-200"
+                    style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-gray-700 dark:text-slate-300 whitespace-nowrap">
+                  {importProgress.current} / {importProgress.total} ({Math.round((importProgress.current / importProgress.total) * 100)}%)
+                </span>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">
+                {bulkRows.length > 0 ? `${bulkRows.filter(r => r.firstName && r.email).length} users ready to import` : ''}
+              </div>
+            )}
+            <div className="flex items-center gap-2 shrink-0">
+              <button className="btn-secondary" disabled={bulkSaving} onClick={() => setBulkOpen(false)}>Cancel</button>
+              <button className="btn-primary" disabled={bulkSaving || bulkRows.filter(r => r.firstName && r.email).length === 0} onClick={executeBulkCreate}>
+                {bulkSaving ? (importProgress ? `Importing (${importProgress.current}/${importProgress.total})...` : 'Importing Users...') : `Import ${bulkRows.filter(r => r.firstName && r.email).length} Users`}
+              </button>
+            </div>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -687,6 +722,18 @@ export default function AdminUsers() {
             </div>
           </div>
 
+          {bulkRows.length > 50 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold">⚡ Fast Preview:</span>
+                <span>Showing first 50 rows of {bulkRows.length} users to keep page scrolling fast.</span>
+              </div>
+              <span className="font-bold bg-blue-100 dark:bg-blue-900 px-2 py-0.5 rounded text-blue-900 dark:text-blue-100">
+                All {bulkRows.length} users will be created
+              </span>
+            </div>
+          )}
+
           {/* User Rows Table */}
           <div className="max-h-[380px] overflow-y-auto overflow-x-auto border border-gray-200 dark:border-slate-800 rounded-lg scrollbar-thin">
             <table className="w-full text-xs text-left text-gray-700 dark:text-slate-200 min-w-[1300px]">
@@ -708,7 +755,7 @@ export default function AdminUsers() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                {bulkRows.map((row, idx) => (
+                {bulkRows.slice(0, 50).map((row, idx) => (
                   <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
                     <td className="p-2 text-center text-gray-400 font-mono">{idx + 1}</td>
                     <td className="p-1">

@@ -68,8 +68,14 @@ interface UserQueryParams {
   dateTo?: Date;
 }
 
+interface CreateUserOptions {
+  cachedPasswordHash?: string;
+  deptCache?: Map<string, string>;
+  skipActivityLog?: boolean;
+}
+
 class UserService {
-  async createUser(data: CreateUserData, createdById?: string): Promise<any> {
+  async createUser(data: CreateUserData, createdById?: string, options?: CreateUserOptions): Promise<any> {
     const existingUser = await prisma.user.findUnique({
       where: { email: data.email.toLowerCase().trim() },
     });
@@ -79,7 +85,7 @@ class UserService {
     }
 
     let password = data.temporaryPassword || generateToken(12);
-    const passwordHash = await hashPassword(password);
+    const passwordHash = options?.cachedPasswordHash || (await hashPassword(password));
 
     let firstName = (data.firstName || '').trim();
     let lastName = (data.lastName || '').trim();
@@ -96,15 +102,23 @@ class UserService {
     let departmentId = data.departmentId || null;
     if (!departmentId && data.departmentName && data.departmentName.trim()) {
       const dName = data.departmentName.trim();
-      let dept = await prisma.department.findFirst({
-        where: { name: { equals: dName, mode: 'insensitive' } },
-      });
-      if (!dept) {
-        dept = await prisma.department.create({
-          data: { name: dName },
+      const normKey = dName.toLowerCase();
+      if (options?.deptCache && options.deptCache.has(normKey)) {
+        departmentId = options.deptCache.get(normKey) || null;
+      } else {
+        let dept = await prisma.department.findFirst({
+          where: { name: { equals: dName, mode: 'insensitive' } },
         });
+        if (!dept) {
+          dept = await prisma.department.create({
+            data: { name: dName },
+          });
+        }
+        departmentId = dept.id;
+        if (options?.deptCache) {
+          options.deptCache.set(normKey, dept.id);
+        }
       }
-      departmentId = dept.id;
     }
 
     const jobTitle = (data.jobTitle || data.designations || data.desginations || '').trim() || null;
@@ -177,7 +191,9 @@ class UserService {
       },
     });
 
-    await logActivity(createdById || 'system', 'USER_CREATED', `Created user ${user.email}`, undefined, { userId: user.id, role: user.role });
+    if (!options?.skipActivityLog) {
+      await logActivity(createdById || 'system', 'USER_CREATED', `Created user ${user.email}`, undefined, { userId: user.id, role: user.role });
+    }
 
     if (data.sendWelcomeEmail !== false) {
       await emailService.sendWelcomeEmail(user.email, user.firstName, config.frontendUrl, data.temporaryPassword ? password : undefined);
@@ -190,10 +206,23 @@ class UserService {
 
   async bulkCreateUsers(usersData: CreateUserData[], createdById: string): Promise<{ success: number; failed: number; users: any[]; errors: any[] }> {
     const results = { success: 0, failed: 0, users: [] as any[], errors: [] as any[] };
+    const passwordHashMap = new Map<string, string>();
+    const deptCache = new Map<string, string>();
 
     for (const userData of usersData) {
       try {
-        const user = await this.createUser(userData, createdById);
+        const pwd = userData.temporaryPassword || 'LaxmiUser@123';
+        if (!passwordHashMap.has(pwd)) {
+          passwordHashMap.set(pwd, await hashPassword(pwd));
+        }
+        const cachedPasswordHash = passwordHashMap.get(pwd);
+
+        userData.sendWelcomeEmail = false;
+        const user = await this.createUser(userData, createdById, {
+          cachedPasswordHash,
+          deptCache,
+          skipActivityLog: true,
+        });
         results.success++;
         results.users.push(user);
       } catch (error) {
@@ -204,6 +233,16 @@ class UserService {
           error: error instanceof Error ? error.message : 'Failed to create user',
         });
       }
+    }
+
+    if (results.success > 0) {
+      await logActivity(
+        createdById || 'system',
+        'USER_BULK_CREATED',
+        `Bulk created ${results.success} user(s) (${results.failed} failed)`,
+        undefined,
+        { successCount: results.success, failedCount: results.failed }
+      );
     }
 
     return results;
