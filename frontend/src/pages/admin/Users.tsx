@@ -281,8 +281,8 @@ export default function AdminUsers() {
         return -1;
       };
 
-      const idIdx = findCol('employeeid', 'employee', 'empid', 'id', 'emplo');
-      const fnIdx = findCol('firstname', 'name', 'fullname', 'first_name');
+      const idIdx = findCol('employeeid', 'employee', 'empid', 'id', 'emplo', 'code');
+      const fnIdx = findCol('firstname', 'name', 'fullname', 'first_name', 'employeename');
       const deptIdx = findCol('departmentname', 'department', 'deptname', 'dept');
       const raiserIdx = findCol('departmentraisername', 'departmentraiser', 'raisername', 'raiser');
       const desigIdx = findCol('desginations', 'designations', 'designation', 'jobtitle', 'title');
