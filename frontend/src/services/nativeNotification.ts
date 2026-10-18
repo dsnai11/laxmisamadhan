@@ -10,9 +10,9 @@ let notificationCounter = 1;
  * Initializes notification permissions and Android high-priority channel
  */
 export const initTrayNotifications = async (onNavigate?: (url: string) => void) => {
-  if (Capacitor.isNativePlatform()) {
+  if (Capacitor.isPluginAvailable('LocalNotifications')) {
     try {
-      // 1. Request permission on Android 13+ and iOS
+      // 1. Request permission on Android 13+
       const status = await LocalNotifications.checkPermissions();
       if (status.display !== 'granted') {
         const req = await LocalNotifications.requestPermissions();
@@ -22,7 +22,7 @@ export const initTrayNotifications = async (onNavigate?: (url: string) => void) 
       }
 
       // 2. Create high-priority notification channel for Android (Heads-Up tray banner)
-      if (!isChannelCreated) {
+      if (Capacitor.getPlatform() === 'android' && !isChannelCreated) {
         await LocalNotifications.createChannel({
           id: CHANNEL_ID,
           name: 'Ticket & SLA Alerts',
@@ -79,7 +79,7 @@ export const showTrayNotification = async (payload: {
   // Trigger haptic vibration on native handset
   triggerHaptic();
 
-  if (Capacitor.isNativePlatform()) {
+  if (Capacitor.isPluginAvailable('LocalNotifications')) {
     try {
       const numericId = typeof payload.id === 'number'
         ? payload.id

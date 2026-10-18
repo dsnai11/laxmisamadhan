@@ -13,6 +13,12 @@ const config: CapacitorConfig = {
       '65.2.215.48'
     ],
   },
+  ios: {
+    includePlugins: [
+      '@capacitor/haptics',
+      '@capacitor/keyboard',
+    ],
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
