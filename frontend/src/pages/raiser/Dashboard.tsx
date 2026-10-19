@@ -1,14 +1,17 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { PlusIcon, TicketIcon, ClockIcon, CheckCircleIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TicketIcon, ClockIcon, CheckCircleIcon, ArrowPathIcon, MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import api from '@services/api';
 import { formatRelativeTime, getStatusColor, getPriorityColor, cn } from '@utils/helpers';
+import { SLABadge } from '@components/common/ui';
 
 const statCards = [
-  { name: 'My Tickets', key: 'total', icon: TicketIcon, color: 'bg-blue-500' },
-  { name: 'Open', key: 'open', icon: ClockIcon, color: 'bg-yellow-500' },
-  { name: 'Waiting on Me', key: 'dependency', icon: ArrowPathIcon, color: 'bg-amber-500' },
-  { name: 'Resolved', key: 'resolved', icon: CheckCircleIcon, color: 'bg-green-500' },
+  { name: 'Total Tickets', key: 'total', icon: TicketIcon, color: 'bg-blue-500', href: '/raiser/my-tickets' },
+  { name: 'Open', key: 'open', icon: ClockIcon, color: 'bg-yellow-500', href: '/raiser/my-tickets?status=OPEN' },
+  { name: 'Overdue', key: 'overdue', icon: ExclamationTriangleIcon, color: 'bg-red-500', href: '/raiser/my-tickets?slaStatus=BREACHED' },
+  { name: 'Waiting on Me', key: 'dependency', icon: ArrowPathIcon, color: 'bg-amber-500', href: '/raiser/my-tickets?status=DEPENDENCY_ON_CLIENT' },
+  { name: 'Resolved', key: 'resolved', icon: CheckCircleIcon, color: 'bg-green-500', href: '/raiser/my-tickets?status=RESOLVED' },
 ];
 
 export default function RaiserDashboard() {
@@ -17,26 +20,39 @@ export default function RaiserDashboard() {
     queryFn: () => api.getMyTickets({ page: 1, limit: 5, sortBy: 'updatedAt', sortOrder: 'desc' }),
   });
 
-  const stats = tickets?.data || [];
+  const { data: statsData } = useQuery({
+    queryKey: ['ticketStats'],
+    queryFn: () => api.getTicketStats(),
+  });
 
-  const getMyStats = () => {
-    const total = tickets?.total || 0;
-    const open = stats.filter((t: any) => ['OPEN', 'REOPENED'].includes(t.status)).length;
-    const dependency = stats.filter((t: any) => t.status === 'DEPENDENCY_ON_CLIENT').length;
-    const resolved = stats.filter((t: any) => t.status === 'RESOLVED').length;
-    return { total, open, dependency, resolved };
-  };
+  const { data: overdueData } = useQuery({
+    queryKey: ['myOverdueTicketsCount'],
+    queryFn: () => api.getMyTickets({ slaStatus: 'BREACHED', limit: 1 }),
+  });
 
-  const myStats = getMyStats();
+  const recentTickets = tickets?.data || [];
+
+  const myStats = useMemo(() => {
+    const statusMap: Record<string, number> = {};
+    statsData?.byStatus?.forEach((s: any) => { statusMap[s.status] = s.count; });
+
+    const total = statsData?.totalTickets ?? tickets?.total ?? 0;
+    const open = (statusMap['OPEN'] || 0) + (statusMap['REOPENED'] || 0) + (statusMap['IN_PROGRESS'] || 0);
+    const dependency = statusMap['DEPENDENCY_ON_CLIENT'] || 0;
+    const resolved = (statusMap['RESOLVED'] || 0) + (statusMap['CLOSED'] || 0);
+    const overdue = overdueData?.total ?? 0;
+
+    return { total, open, overdue, dependency, resolved };
+  }, [statsData, tickets?.total, overdueData?.total]);
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => (
             <div key={i} className="card p-6 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+              <div className="h-8 bg-gray-200 dark:bg-slate-700 rounded w-1/2"></div>
             </div>
           ))}
         </div>
@@ -57,12 +73,37 @@ export default function RaiserDashboard() {
         </Link>
       </div>
 
+      {/* Overdue Alert Banner for Raiser */}
+      {myStats.overdue > 0 && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 shrink-0">
+              <ExclamationTriangleIcon className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-red-900 dark:text-red-200">
+                You have {myStats.overdue} overdue ticket{myStats.overdue > 1 ? 's' : ''} past resolution SLA!
+              </p>
+              <p className="text-xs text-red-700 dark:text-red-400">
+                These tickets have exceeded their promised resolution time and require priority follow-up.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/raiser/my-tickets?slaStatus=BREACHED"
+            className="btn-sm bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg px-3 py-1.5 shrink-0 transition-colors self-end sm:self-center"
+          >
+            View Overdue Tickets →
+          </Link>
+        </div>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {statCards.map((card) => {
           const value = myStats[card.key as keyof typeof myStats] || 0;
           return (
-            <Link key={card.name} to="/raiser/my-tickets" className="card p-4 sm:p-6 hover:shadow-card-hover transition-shadow">
+            <Link key={card.name} to={card.href} className="card p-4 sm:p-5 hover:shadow-card-hover transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">{card.name}</p>
@@ -94,14 +135,15 @@ export default function RaiserDashboard() {
                 <th>Category</th>
                 <th>Priority</th>
                 <th>Status</th>
+                <th>SLA Status</th>
                 <th>Updated</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {stats.length === 0 ? (
+              {recentTickets.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-4 text-gray-500">
                       <TicketIcon className="h-12 w-12" />
                       <p>No tickets yet</p>
@@ -113,33 +155,44 @@ export default function RaiserDashboard() {
                   </td>
                 </tr>
               ) : (
-                stats.map((ticket: any) => (
-                  <tr key={ticket.id}>
-                    <td>
-                      <Link to={`/raiser/tickets/${ticket.id}`} className="font-mono text-sm font-medium text-primary-600 hover:text-primary-700">
-                        {ticket.ticketNumber}
-                      </Link>
-                    </td>
-                    <td>
-                      <Link to={`/raiser/tickets/${ticket.id}`} className="text-sm font-medium text-gray-900 hover:text-primary-600 truncate max-w-xs block">
-                        {ticket.title}
-                      </Link>
-                    </td>
-                    <td>
-                      <span className="text-sm text-gray-600 capitalize">{ticket.category.replace('_', ' ').toLowerCase()}</span>
-                    </td>
-                    <td>
-                      <span className={cn('badge', getPriorityColor(ticket.priority))}>{ticket.priority}</span>
-                    </td>
-                    <td>
-                      <span className={cn('badge', getStatusColor(ticket.status))}>{ticket.status.replace('_', ' ')}</span>
-                    </td>
-                    <td className="text-sm text-gray-500">{formatRelativeTime(ticket.updatedAt)}</td>
-                    <td>
-                      <Link to={`/raiser/tickets/${ticket.id}`} className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</Link>
-                    </td>
-                  </tr>
-                ))
+                recentTickets.map((ticket: any) => {
+                  const isOverdue =
+                    ticket.slaStatus === 'BREACHED' ||
+                    (ticket.resolutionDueAt &&
+                      !ticket.resolvedAt &&
+                      new Date(ticket.resolutionDueAt).getTime() < Date.now());
+
+                  return (
+                    <tr key={ticket.id}>
+                      <td>
+                        <Link to={`/raiser/tickets/${ticket.id}`} className="font-mono text-sm font-medium text-primary-600 hover:text-primary-700">
+                          {ticket.ticketNumber}
+                        </Link>
+                      </td>
+                      <td>
+                        <Link to={`/raiser/tickets/${ticket.id}`} className="text-sm font-medium text-gray-900 dark:text-white hover:text-primary-600 truncate max-w-xs block">
+                          {ticket.title}
+                        </Link>
+                      </td>
+                      <td>
+                        <span className="text-sm text-gray-600 dark:text-slate-400 capitalize">{ticket.category.replace(/_/g, ' ').toLowerCase()}</span>
+                      </td>
+                      <td>
+                        <span className={cn('badge', getPriorityColor(ticket.priority))}>{ticket.priority}</span>
+                      </td>
+                      <td>
+                        <span className={cn('badge', getStatusColor(ticket.status))}>{ticket.status.replace(/_/g, ' ')}</span>
+                      </td>
+                      <td>
+                        <SLABadge status={ticket.slaStatus} isOverdue={isOverdue} />
+                      </td>
+                      <td className="text-sm text-gray-500 dark:text-slate-400">{formatRelativeTime(ticket.updatedAt)}</td>
+                      <td>
+                        <Link to={`/raiser/tickets/${ticket.id}`} className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</Link>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

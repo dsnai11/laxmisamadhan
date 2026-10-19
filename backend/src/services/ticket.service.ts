@@ -863,11 +863,25 @@ class TicketService {
     if (params.raisedById) where.raisedById = params.raisedById;
     if (params.teamId) where.teamId = params.teamId;
     if (params.tags?.length) where.tags = { hasSome: params.tags };
-    if (params.slaStatus) where.slaStatus = params.slaStatus;
     if (params.hasAttachments !== undefined) where.attachments = params.hasAttachments ? { some: {} } : { none: {} };
     if (params.isWatching && params.userId) where.watchers = { some: { userId: params.userId } };
 
     const and: Prisma.TicketWhereInput[] = [];
+
+    if (params.slaStatus === 'BREACHED') {
+      and.push({
+        OR: [
+          { slaStatus: 'BREACHED' },
+          {
+            resolvedAt: null,
+            status: { not: TicketStatus.RESOLVED },
+            resolutionDueAt: { lt: new Date() },
+          },
+        ],
+      });
+    } else if (params.slaStatus) {
+      where.slaStatus = params.slaStatus;
+    }
 
     if (params.search) {
       and.push({

@@ -64,9 +64,17 @@ export default function KanbanView({ tickets, basePath, onStatusChange }: Kanban
                     </div>
 
                     {/* SLA Badge */}
-                    {ticket.slaStatus && (
+                    {(ticket.slaStatus || (ticket.resolutionDueAt && !ticket.resolvedAt && new Date(ticket.resolutionDueAt).getTime() < Date.now())) && (
                       <div className="mb-3">
-                        <SLABadge status={ticket.slaStatus} />
+                        <SLABadge
+                          status={ticket.slaStatus}
+                          isOverdue={
+                            ticket.slaStatus === 'BREACHED' ||
+                            (ticket.resolutionDueAt &&
+                              !ticket.resolvedAt &&
+                              new Date(ticket.resolutionDueAt).getTime() < Date.now())
+                          }
+                        />
                       </div>
                     )}
 

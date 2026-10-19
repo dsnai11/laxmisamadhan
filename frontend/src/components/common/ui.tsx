@@ -178,9 +178,17 @@ export function PriorityBadge({ priority }: { priority?: string }) {
   return <span className={cn('badge', getPriorityColor(priority))}>{humanize(priority)}</span>;
 }
 
-export function SLABadge({ status }: { status?: string }) {
-  if (!status) return null;
-  return <span className={cn('badge', getSLABadgeColor(status))}>{humanize(status)}</span>;
+export function SLABadge({ status, isOverdue }: { status?: string; isOverdue?: boolean }) {
+  if (!status && !isOverdue) return null;
+  const isBreachedOrOverdue = isOverdue || status === 'BREACHED';
+  const effectiveStatus = isBreachedOrOverdue ? 'BREACHED' : status || 'WITHIN_SLA';
+  const label = isBreachedOrOverdue ? 'Overdue' : humanize(effectiveStatus);
+  return (
+    <span className={cn('badge inline-flex items-center gap-1 font-semibold', getSLABadgeColor(effectiveStatus))}>
+      {isBreachedOrOverdue && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
+      {label}
+    </span>
+  );
 }
 
 export function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {

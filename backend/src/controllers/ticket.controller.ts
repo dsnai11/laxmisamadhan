@@ -228,6 +228,7 @@ export const getMyTickets = asyncHandler(async (req: AuthenticatedRequest, res: 
     status: req.query.status as TicketStatus,
     priority: req.query.priority as TicketPriority,
     category: req.query.category as TicketCategory,
+    slaStatus: req.query.slaStatus as any,
     search: req.query.search as string,
     raisedById: req.user!.userId,
     userId: req.user!.userId,

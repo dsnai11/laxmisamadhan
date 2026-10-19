@@ -132,9 +132,9 @@ export default function TicketListPage({
 
       <div className="card">
         {/* Search & Filters */}
-        <div className="p-4 border-b border-gray-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div className="p-4 border-b border-gray-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
           <input
-            className="input md:col-span-2"
+            className="input sm:col-span-2"
             placeholder="Search by number, title or description..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -151,6 +151,13 @@ export default function TicketListPage({
           <select className="input" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} aria-label="Filter by category">
             <option value="">All Categories</option>
             {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{humanize(c)}</option>)}
+          </select>
+          <select className="input font-medium" value={slaStatus} onChange={(e) => { setSlaStatus(e.target.value); setPage(1); }} aria-label="Filter by SLA status">
+            <option value="">All SLAs</option>
+            <option value="BREACHED">⚠️ Overdue (Breached)</option>
+            <option value="APPROACHING_BREACH">⏳ Approaching Breach</option>
+            <option value="WITHIN_SLA">✅ Within SLA</option>
+            <option value="PAUSED">⏸️ Paused</option>
           </select>
         </div>
 
@@ -193,7 +200,14 @@ export default function TicketListPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.map((t) => (
+                  {tickets.map((t) => {
+                    const isOverdue =
+                      t.slaStatus === 'BREACHED' ||
+                      (t.resolutionDueAt &&
+                        !t.resolvedAt &&
+                        new Date(t.resolutionDueAt).getTime() < Date.now());
+
+                    return (
                     <tr key={t.id} className="cursor-pointer hover:bg-primary-50/30 dark:hover:bg-slate-800/60 transition-colors" onClick={() => navigate(`${basePath}/${t.id}`)}>
                       <td>
                         <Link to={`${basePath}/${t.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline">
@@ -209,7 +223,7 @@ export default function TicketListPage({
                       </td>
                       <td><PriorityBadge priority={t.priority} /></td>
                       <td><StatusBadge status={t.status} /></td>
-                      <td><SLABadge status={t.slaStatus} /></td>
+                      <td><SLABadge status={t.slaStatus} isOverdue={isOverdue} /></td>
                       {showRaiser && <td className="text-sm text-gray-700 dark:text-slate-300">{t.raisedBy ? `${t.raisedBy.firstName} ${t.raisedBy.lastName}` : '-'}</td>}
                       {showAssignee && (
                         <td className="text-sm text-gray-700 dark:text-slate-300">
@@ -221,8 +235,9 @@ export default function TicketListPage({
                         <td onClick={(e) => e.stopPropagation()}>{renderRowAction(t, () => refetch())}</td>
                       )}
                     </tr>
-                  ))}
-                </tbody>
+                  );
+                })}
+              </tbody>
               </table>
             </div>
             <Pagination page={data?.page || page} totalPages={data?.totalPages || 1} total={data?.total || 0} onPageChange={setPage} />

@@ -238,6 +238,13 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
     }
   };
 
+  const isOverdue =
+    ticket.slaStatus === 'BREACHED' ||
+    (ticket.resolutionDueAt &&
+      !ticket.resolvedAt &&
+      new Date(ticket.resolutionDueAt).getTime() < Date.now());
+  const isTicketClosedOrResolved = ['RESOLVED', 'CLOSED', 'CANCELLED'].includes(ticket.status);
+
   return (
     <div className="space-y-6">
       <div>
@@ -246,13 +253,30 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
           <span className="font-mono text-sm text-gray-500">{ticket.ticketNumber}</span>
           <StatusBadge status={ticket.status} />
           <PriorityBadge priority={ticket.priority} />
-          <SLABadge status={ticket.slaStatus} />
+          <SLABadge status={ticket.slaStatus} isOverdue={isOverdue} />
         </div>
         <h1 className="mt-1 text-2xl font-bold text-gray-900 break-words">{ticket.title}</h1>
         <p className="text-sm text-gray-500 mt-1">
           Raised by {fullName(ticket.raisedBy)} · {formatDate(ticket.createdAt, 'datetime')} · {ticket.department?.name}
         </p>
       </div>
+
+      {/* Overdue Warning Alert */}
+      {isOverdue && !isTicketClosedOrResolved && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 shrink-0">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-semibold text-red-900 dark:text-red-200">Ticket Resolution Overdue</h4>
+            <p className="text-xs sm:text-sm text-red-700 dark:text-red-300 mt-0.5">
+              This ticket has exceeded its resolution SLA target (due {ticket.resolutionDueAt ? formatDate(ticket.resolutionDueAt, 'datetime') : 'earlier'}). The assigned department has been alerted for priority resolution.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Top Tile: Assigned Support Agent Contact Details */}
       <AssignedAgentTopTile ticket={ticket} />
