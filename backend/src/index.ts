@@ -49,7 +49,11 @@ app.use(cors({
     if (config.cors.origin.includes(origin)) {
       return callback(null, true);
     }
-    callback(null, true);
+    if (origin.startsWith('capacitor://') || origin.startsWith('http://localhost') || origin.startsWith('https://localhost')) {
+      return callback(null, true);
+    }
+    logger.warn(`CORS blocked request from origin: ${origin}`);
+    callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

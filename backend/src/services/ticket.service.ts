@@ -289,6 +289,13 @@ class TicketService {
       }
     }
 
+    const isRaiserOnly = userRole === UserRole.RAISER && (!userRoles || !userRoles.some(r => STAFF_ROLES.includes(r)));
+    if (isRaiserOnly) {
+      delete updates.priority;
+      delete updates.assignedTo;
+      delete updates.team;
+    }
+
     // If transferring to a new department (e.g. raised in wrong department):
     if (data.departmentId && data.departmentId !== ticket.departmentId) {
       const allRoles: UserRole[] = Array.from(new Set([
