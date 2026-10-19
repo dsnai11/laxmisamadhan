@@ -189,8 +189,10 @@ class TicketService {
   }
 
   async getTicketById(id: string, userId: string, userRole: UserRole): Promise<any> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const where = isUuid ? { id } : { ticketNumber: id };
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: where as any,
       include: {
         raisedBy: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, employeeId: true, jobTitle: true, site: true, reportingManagerName: true, avatar: true, department: true } },
         assignedTo: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, employeeId: true, jobTitle: true, site: true, avatar: true, role: true, department: true } },
@@ -1383,7 +1385,7 @@ class TicketService {
   }
 
   private async sendTicketCreatedNotifications(ticket: any): Promise<void> {
-    const watchers = ticket.watchers.map((w: any) => w.user);
+    const watchers = (ticket.watchers || []).map((w: any) => w.user);
     const recipients = [ticket.raisedBy, ...watchers].filter(Boolean);
 
     for (const user of recipients) {
@@ -1395,6 +1397,17 @@ class TicketService {
         referenceId: ticket.id,
         referenceType: 'TICKET',
       });
+    }
+
+    if (ticket.raisedBy?.email) {
+      fireAndForget(emailService.sendTicketCreatedEmail(
+        ticket.raisedBy.email,
+        ticket.ticketNumber,
+        ticket.title,
+        config.frontendUrl,
+        ticket.department?.name,
+        ticket.priority
+      ));
     }
   }
 

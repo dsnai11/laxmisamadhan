@@ -4,6 +4,8 @@ import { logActivity } from '@middleware/audit.middleware';
 import { TicketPriority, TicketCategory, Prisma } from '@prisma/client';
 import { addMinutes, isBefore, isAfter } from 'date-fns';
 import { NotFoundError } from '@middleware/error.middleware';
+import emailService from './email.service';
+import config from '@config/index';
 
 const logger = createLogger('sla-service');
 
@@ -198,6 +200,21 @@ class SLAService {
           referenceType: 'TICKET',
           metadata: { ticketNumber: ticket.ticketNumber },
         },
+      });
+    }
+
+    if (ticket.assignedTo?.email) {
+      emailService.sendSLAWarningEmail(
+        ticket.assignedTo.email,
+        ticket.ticketNumber,
+        ticket.title,
+        'Approaching SLA deadline',
+        config.frontendUrl
+      ).catch((err) => {
+        logger.error('Failed to send SLA warning email', {
+          error: err instanceof Error ? err.message : String(err),
+          ticketNumber: ticket.ticketNumber,
+        });
       });
     }
   }

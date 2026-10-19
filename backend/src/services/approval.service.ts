@@ -227,6 +227,22 @@ class ApprovalService {
       });
     }
 
+    const recipientEmails = new Set<string>();
+    if (updatedApproval.requester?.email) recipientEmails.add(updatedApproval.requester.email);
+    if (ticket.raisedBy?.email) recipientEmails.add(ticket.raisedBy.email);
+
+    for (const email of recipientEmails) {
+      emailService.sendApprovalDecisionEmail(
+        email,
+        ticket.ticketNumber,
+        ticket.title,
+        status,
+        approverName,
+        response,
+        config.frontendUrl
+      ).catch(() => undefined);
+    }
+
     return updatedApproval;
   }
 

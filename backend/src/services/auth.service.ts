@@ -309,6 +309,12 @@ class AuthService {
 
     await this.logout(userId, true, userId);
 
+    if (user.email) {
+      emailService.sendPasswordChangedEmail(user.email, user.firstName).catch((err) => {
+        logger.error('Failed to send password changed confirmation email', { error: err instanceof Error ? err.message : String(err), email: user.email });
+      });
+    }
+
     logger.info('Password changed', { userId });
   }
 
@@ -387,6 +393,12 @@ class AuthService {
     });
 
     await this.logout(user.id, true, user.id);
+
+    if (user.email) {
+      emailService.sendPasswordChangedEmail(user.email, user.firstName).catch((err) => {
+        logger.error('Failed to send password changed confirmation email', { error: err instanceof Error ? err.message : String(err), email: user.email });
+      });
+    }
 
     logger.info('Password reset completed', { userId: user.id });
   }
