@@ -106,7 +106,7 @@ model User {
   lastName          String
   phone             String?
   mobile            String?
-  employeeId        String?
+  employeeId        String?   @unique
   jobTitle          String?
   site              String?
   branch            String?

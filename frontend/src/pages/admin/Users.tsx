@@ -350,6 +350,21 @@ export default function AdminUsers() {
       return toast.error('Please enter at least one valid user with First Name and Mail Id');
     }
 
+    const empIdSeen = new Set<string>();
+    const duplicateIds: string[] = [];
+    for (const u of validUsers) {
+      if (u.employeeId?.trim()) {
+        const idLower = u.employeeId.trim().toLowerCase();
+        if (empIdSeen.has(idLower)) {
+          duplicateIds.push(u.employeeId.trim());
+        }
+        empIdSeen.add(idLower);
+      }
+    }
+    if (duplicateIds.length > 0) {
+      return toast.error(`Duplicate Employee Code(s) found in list: ${duplicateIds.slice(0, 5).join(', ')}${duplicateIds.length > 5 ? '...' : ''}. Employee IDs must be unique.`);
+    }
+
     setBulkSaving(true);
     setImportProgress({ current: 0, total: validUsers.length });
 

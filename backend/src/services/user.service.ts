@@ -84,6 +84,17 @@ class UserService {
       throw new Error(`Email ${data.email} is already registered`);
     }
 
+    const normEmployeeId = data.employeeId?.trim() || null;
+    if (normEmployeeId) {
+      const existingByEmpId = await prisma.user.findFirst({
+        where: { employeeId: { equals: normEmployeeId, mode: 'insensitive' } },
+        select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+      });
+      if (existingByEmpId) {
+        throw new Error(`Employee ID "${normEmployeeId}" is already registered to ${existingByEmpId.firstName} ${existingByEmpId.lastName} (${existingByEmpId.email})`);
+      }
+    }
+
     let password = data.temporaryPassword || generateToken(12);
     const passwordHash = options?.cachedPasswordHash || (await hashPassword(password));
 
@@ -149,7 +160,7 @@ class UserService {
         lastName,
         phone,
         mobile,
-        employeeId: data.employeeId?.trim() || null,
+        employeeId: normEmployeeId,
         jobTitle,
         site: branch || null,
         branch,
@@ -208,9 +219,19 @@ class UserService {
     const results = { success: 0, failed: 0, users: [] as any[], errors: [] as any[] };
     const passwordHashMap = new Map<string, string>();
     const deptCache = new Map<string, string>();
+    const seenEmpIds = new Set<string>();
 
     for (const userData of usersData) {
       try {
+        const empId = userData.employeeId?.trim();
+        if (empId) {
+          const lowerEmp = empId.toLowerCase();
+          if (seenEmpIds.has(lowerEmp)) {
+            throw new Error(`Duplicate Employee ID "${empId}" found within uploaded file/batch`);
+          }
+          seenEmpIds.add(lowerEmp);
+        }
+
         const pwd = userData.temporaryPassword || 'LaxmiUser@123';
         if (!passwordHashMap.has(pwd)) {
           passwordHashMap.set(pwd, await hashPassword(pwd));
@@ -358,6 +379,25 @@ class UserService {
         }
         data.email = normalizedEmail;
       }
+    }
+
+    if (data.employeeId !== undefined) {
+      const normEmployeeId = data.employeeId ? data.employeeId.trim() : null;
+      if (normEmployeeId) {
+        if (!user.employeeId || user.employeeId.toLowerCase() !== normEmployeeId.toLowerCase()) {
+          const existingByEmpId = await prisma.user.findFirst({
+            where: {
+              employeeId: { equals: normEmployeeId, mode: 'insensitive' },
+              id: { not: id },
+            },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          });
+          if (existingByEmpId) {
+            throw new Error(`Employee ID "${normEmployeeId}" is already in use by ${existingByEmpId.firstName} ${existingByEmpId.lastName} (${existingByEmpId.email})`);
+          }
+        }
+      }
+      data.employeeId = normEmployeeId;
     }
 
     if (data.roles !== undefined && data.roles.length > 0) {
