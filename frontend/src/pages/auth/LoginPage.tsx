@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { 
+  IdentificationIcon,
   EnvelopeIcon, 
   LockClosedIcon, 
   EyeIcon, 
@@ -19,7 +20,7 @@ import toast from 'react-hot-toast';
 import { cn } from '@utils/helpers';
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  employeeId: z.string().min(1, 'Employee ID is required'),
   password: z.string().min(1, 'Password is required'),
   mfaCode: z.string().length(6, 'MFA code must be 6 digits').optional(),
   rememberMe: z.boolean().optional(),
@@ -51,7 +52,7 @@ export default function LoginPage() {
     setLoginError(null);
     setAccountNotCreated(false);
     try {
-      await login(data.email, data.password, data.mfaCode, data.rememberMe);
+      await login(data.employeeId, data.password, data.mfaCode, data.rememberMe);
       toast.success('Welcome back to Laxmi India Finance IT Portal');
       navigate('/');
     } catch (error: any) {
@@ -120,7 +121,7 @@ export default function LoginPage() {
           <div className="border-b border-gray-100 dark:border-slate-800 pb-4">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Sign in to your account</h2>
             <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-              Enter your corporate credentials to access the ticketing platform
+              Enter your Employee ID and password to access the ticketing platform
             </p>
           </div>
 
@@ -135,7 +136,7 @@ export default function LoginPage() {
                     Account ID Not Registered
                   </h3>
                   <p className="text-xs text-amber-800/90 dark:text-amber-300/90 leading-relaxed font-medium">
-                    Your corporate email or employee ID has not been created on the Laxmi Samadhan portal yet.
+                    Your Employee ID has not been created on the Laxmi Samadhan portal yet.
                   </p>
                 </div>
               </div>
@@ -169,28 +170,28 @@ export default function LoginPage() {
 
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-slate-300 mb-1">
-                Corporate Email Address
+              <label htmlFor="employeeId" className="block text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-slate-300 mb-1">
+                Employee ID
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <EnvelopeIcon className="h-5 w-5 text-red-500" />
+                  <IdentificationIcon className="h-5 w-5 text-red-500" />
                 </div>
                 <input
-                  {...register('email')}
-                  id="email"
-                  type="email"
-                  autoComplete="email"
+                  {...register('employeeId')}
+                  id="employeeId"
+                  type="text"
+                  autoComplete="username"
                   className={cn(
                     'input pl-10 bg-gray-50/50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 focus:ring-red-500 focus:border-red-500',
-                    errors.email && 'border-red-500 focus:ring-red-500'
+                    errors.employeeId && 'border-red-500 focus:ring-red-500'
                   )}
-                  placeholder="name@laxmi.com"
+                  placeholder="e.g. LIF10234"
                   disabled={isLoading}
                 />
               </div>
-              {errors.email && (
-                <p className="mt-1 text-xs text-red-600 font-medium">{errors.email.message}</p>
+              {errors.employeeId && (
+                <p className="mt-1 text-xs text-red-600 font-medium">{errors.employeeId.message}</p>
               )}
             </div>
 

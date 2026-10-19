@@ -26,7 +26,9 @@ export interface LoginResult {
     email: string;
     firstName: string;
     lastName: string;
+    employeeId?: string | null;
     role: UserRole;
+    roles?: UserRole[];
     status: UserStatus;
     departmentId: string | null;
     mfaEnabled: boolean;
@@ -100,14 +102,20 @@ class AuthService {
     return { user, tokens };
   }
 
-  async login(email: string, password: string, mfaCode?: string, rememberMe = false): Promise<LoginResult> {
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+  async login(identifier: string, password: string, mfaCode?: string, rememberMe = false): Promise<LoginResult> {
+    const trimmed = (identifier || '').trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { employeeId: { equals: trimmed, mode: 'insensitive' } },
+          { email: { equals: trimmed.toLowerCase(), mode: 'insensitive' } },
+        ],
+      },
     });
 
     if (!user) {
-      await this.handleFailedLogin(email);
-      throw new AppError('Your ID has not been created yet. Please contact your IT administrator or HR team to create your account.', 404, 'ACCOUNT_NOT_FOUND');
+      await this.handleFailedLogin(trimmed);
+      throw new AppError('Your Employee ID has not been created yet. Please contact your IT administrator or HR team to create your account.', 404, 'ACCOUNT_NOT_FOUND');
     }
 
     if (user.status !== UserStatus.ACTIVE) {
@@ -121,7 +129,7 @@ class AuthService {
     const isValidPassword = await verifyPassword(password, user.passwordHash);
     
     if (!isValidPassword) {
-      await this.handleFailedLogin(email, user.id);
+      await this.handleFailedLogin(trimmed, user.id);
       throw new AppError('Incorrect password. Please verify your password and try again.', 401, 'INVALID_PASSWORD');
     }
 
@@ -132,7 +140,7 @@ class AuthService {
       
       const isValidMFA = authenticator.check(mfaCode, user.mfaSecret!);
       if (!isValidMFA) {
-        await this.handleFailedLogin(email, user.id);
+        await this.handleFailedLogin(trimmed, user.id);
         throw new Error('Invalid MFA code');
       }
     }
@@ -304,19 +312,19 @@ class AuthService {
     logger.info('Password changed', { userId });
   }
 
-  async forgotPassword(email: string): Promise<void> {
-    const normalizedEmail = (email || '').trim().toLowerCase();
+  async forgotPassword(identifierOrEmail: string): Promise<void> {
+    const normalized = (identifierOrEmail || '').trim();
     const user = await prisma.user.findFirst({
       where: {
-        email: {
-          equals: normalizedEmail,
-          mode: 'insensitive',
-        },
+        OR: [
+          { employeeId: { equals: normalized, mode: 'insensitive' } },
+          { email: { equals: normalized.toLowerCase(), mode: 'insensitive' } },
+        ],
       },
     });
 
     if (!user) {
-      logger.warn('Password reset requested for non-existent email', { email: normalizedEmail });
+      logger.warn('Password reset requested for non-existent account', { identifier: normalized });
       return;
     }
 
@@ -530,7 +538,7 @@ class AuthService {
     return session;
   }
 
-  private async handleFailedLogin(email: string, userId?: string): Promise<void> {
+  private async handleFailedLogin(identifier: string, userId?: string): Promise<void> {
     if (userId) {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (user) {
@@ -547,7 +555,7 @@ class AuthService {
         });
       }
     }
-    logger.warn('Failed login attempt', { email, userId });
+    logger.warn('Failed login attempt', { identifier, userId });
   }
 
   private async resetFailedAttempts(userId: string): Promise<void> {

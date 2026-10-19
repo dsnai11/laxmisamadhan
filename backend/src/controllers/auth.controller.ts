@@ -17,9 +17,14 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password, mfaCode, rememberMe } = req.body;
+  const { employeeId, identifier, email, password, mfaCode, rememberMe } = req.body;
+  const loginIdentifier = (employeeId || identifier || email)?.trim();
+
+  if (!loginIdentifier) {
+    throw new AppError('Employee ID or email is required', 400, 'EMPLOYEE_ID_REQUIRED');
+  }
   
-  const result = await authService.login(email, password, mfaCode, rememberMe);
+  const result = await authService.login(loginIdentifier, password, mfaCode, rememberMe);
   
   res.cookie('refreshToken', result.tokens.refreshToken, {
     httpOnly: true,
@@ -89,13 +94,16 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const forgotPassword = asyncHandler(async (req: Request, res: Response) => {
-  const { email } = req.body;
+  const { employeeId, identifier, email } = req.body;
+  const loginIdentifier = (employeeId || identifier || email)?.trim();
   
-  await authService.forgotPassword(email);
+  if (loginIdentifier) {
+    await authService.forgotPassword(loginIdentifier);
+  }
 
   res.json({
     success: true,
-    message: 'If the email exists, a password reset link has been sent',
+    message: 'If an account exists, a password reset link has been sent to the registered email address',
   });
 });
 

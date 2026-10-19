@@ -16,10 +16,15 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  employeeId: z.string().trim().optional(),
+  email: z.string().trim().optional(),
+  identifier: z.string().trim().optional(),
   password: z.string().min(1, 'Password is required'),
   mfaCode: z.string().length(6).optional(),
   rememberMe: z.boolean().optional(),
+}).refine((data) => !!(data.employeeId || data.email || data.identifier), {
+  message: 'Employee ID or email is required',
+  path: ['employeeId'],
 });
 
 export const updateProfileSchema = z.object({
@@ -34,7 +39,12 @@ export const refreshTokenSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  employeeId: z.string().trim().optional(),
+  email: z.string().trim().optional(),
+  identifier: z.string().trim().optional(),
+}).refine((data) => !!(data.employeeId || data.email || data.identifier), {
+  message: 'Employee ID or email is required',
+  path: ['employeeId'],
 });
 
 export const resetPasswordSchema = z.object({

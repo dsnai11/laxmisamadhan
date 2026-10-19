@@ -382,7 +382,9 @@ export interface ApiResponse<T> {
 }
 
 export interface LoginCredentials {
-  email: string;
+  employeeId?: string;
+  email?: string;
+  identifier?: string;
   password: string;
   mfaCode?: string;
   rememberMe?: boolean;

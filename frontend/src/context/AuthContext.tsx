@@ -4,7 +4,7 @@ import api from '@services/api';
 
 interface AuthContextType extends AuthState {
   initializeAuth: () => Promise<void>;
-  login: (email: string, password: string, mfaCode?: string, rememberMe?: boolean) => Promise<void>;
+  login: (employeeId: string, password: string, mfaCode?: string, rememberMe?: boolean) => Promise<void>;
   register: (data: any) => Promise<void>;
   logout: (revokeAll?: boolean) => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
@@ -53,8 +53,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializeAuth();
   }, [initializeAuth]);
 
-  const login = async (email: string, password: string, mfaCode?: string, rememberMe?: boolean) => {
-    const res = await api.login({ email, password, mfaCode, rememberMe });
+  const login = async (employeeId: string, password: string, mfaCode?: string, rememberMe?: boolean) => {
+    const trimmed = (employeeId || '').trim();
+    const isEmail = trimmed.includes('@');
+    const res = await api.login({
+      employeeId: !isEmail ? trimmed : undefined,
+      email: isEmail ? trimmed : undefined,
+      identifier: trimmed,
+      password,
+      mfaCode,
+      rememberMe,
+    });
     if (!res || !res.user) {
       throw new Error('Authentication failed. Unable to establish user session.');
     }
