@@ -173,7 +173,7 @@ class SLAService {
 
     await prisma.sLAEvent.updateMany({
       where: { ticketId: ticket.id, eventType: { contains: 'WARNING' }, acknowledgedAt: null },
-      data: { acknowledgedAt: new Date(), acknowledgedById: 'system' },
+      data: { acknowledgedAt: new Date() },
     });
 
     const recipients = new Set<string>();
