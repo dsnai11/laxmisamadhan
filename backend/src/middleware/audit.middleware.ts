@@ -3,7 +3,11 @@ import { prisma } from '@config/prisma';
 import { AuthenticatedRequest } from './auth.middleware';
 import logger from '@utils/logger';
 
-const SENSITIVE_KEYS = new Set(['password', 'currentpassword', 'newpassword', 'token', 'refreshtoken', 'secret', 'mfacode', 'passwordhash']);
+const SENSITIVE_KEYS = new Set([
+  'password', 'currentpassword', 'newpassword', 'token', 'refreshtoken',
+  'secret', 'mfacode', 'passwordhash', 'smtppass', 'smtp_pass', 'pass',
+  'authorization', 'cookie', 'api_key', 'apikey', 'jwt_secret', 'encryption_key'
+]);
 
 function sanitizeForAudit(data: any): any {
   if (!data || typeof data !== 'object') return data;
