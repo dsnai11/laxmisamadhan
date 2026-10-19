@@ -79,6 +79,9 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
   const [cancelOpen, setCancelOpen] = useState(false);
   const [assigneeId, setAssigneeId] = useState('');
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [targetDeptId, setTargetDeptId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
 
   const { data: ticket, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['ticket', id],
@@ -110,6 +113,12 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
     enabled: !!ticket && isManager,
   });
   const assignable: any[] = (staffPool?.data || []).filter((u: any) => STAFF_ROLES.includes(u.role) && u.status === 'ACTIVE');
+
+  const { data: departments } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.getDepartments(),
+    enabled: !!ticket && isManager,
+  });
 
   const refreshAll = () => qc.invalidateQueries();
 
@@ -422,6 +431,44 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
                 </div>
               )}
 
+              {isManager && isActive && (
+                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">Reassign department</label>
+                    <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                      Wrong Dept?
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      className="input text-xs"
+                      value={targetDeptId}
+                      onChange={(e) => setTargetDeptId(e.target.value)}
+                    >
+                      <option value="">Select correct department...</option>
+                      {(departments || [])
+                        .filter((d: any) => d.id !== ticket.departmentId)
+                        .map((d: any) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs px-3 whitespace-nowrap"
+                      disabled={!targetDeptId || busy === 'transferDept'}
+                      onClick={() => setTransferModalOpen(true)}
+                    >
+                      Transfer
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    If raised in the wrong department, transfer to the right team. Current assignee will be unassigned and SLA updated.
+                  </p>
+                </div>
+              )}
+
               {canWork && staffTransitions.length > 0 && (
                 <div className="space-y-2">
                   <label className="label">Change status</label>
@@ -558,6 +605,57 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
         <Field label={isStaff ? 'Reason (optional)' : 'Why are you reopening this ticket?'}>
           <textarea className="input min-h-[100px]" value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} />
         </Field>
+      </Modal>
+
+      <Modal
+        open={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        title="Transfer ticket to another department"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setTransferModalOpen(false)}>Cancel</button>
+            <button
+              className="btn-primary"
+              disabled={!targetDeptId || busy === 'transferDept'}
+              onClick={async () => {
+                const targetDept = (departments || []).find((d: any) => d.id === targetDeptId);
+                const ok = await run(
+                  'transferDept',
+                  () => api.updateTicket(ticket.id, { departmentId: targetDeptId, transferReason }),
+                  `Ticket transferred to ${targetDept?.name || 'new department'}`
+                );
+                if (ok) {
+                  setTransferModalOpen(false);
+                  setTargetDeptId('');
+                  setTransferReason('');
+                }
+              }}
+            >
+              {busy === 'transferDept' ? 'Transferring...' : 'Confirm Transfer'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            You are transferring ticket <strong className="text-gray-900 dark:text-white">#{ticket.ticketNumber}</strong> from{' '}
+            <strong className="text-gray-900 dark:text-white">{ticket.department?.name}</strong> to{' '}
+            <strong className="text-primary-600 dark:text-primary-400">
+              {(departments || []).find((d: any) => d.id === targetDeptId)?.name}
+            </strong>.
+          </p>
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-xs text-amber-800 dark:text-amber-300">
+            <strong>Note:</strong> The ticket will be unassigned from current staff, its SLA policy will recalculate for the new department, and an audit trail comment will be recorded.
+          </div>
+          <Field label="Transfer Reason (optional)" hint="e.g. Raised in IT instead of HR / Accounts">
+            <textarea
+              className="input min-h-[90px]"
+              placeholder="Why is this ticket being transferred?"
+              value={transferReason}
+              onChange={(e) => setTransferReason(e.target.value)}
+            />
+          </Field>
+        </div>
       </Modal>
 
     </div>

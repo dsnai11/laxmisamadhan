@@ -65,7 +65,13 @@ export const getTicketById = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 export const updateTicket = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const ticket = await ticketService.updateTicket(req.params.id, req.body, req.user!.userId, req.user!.role);
+  const ticket = await ticketService.updateTicket(
+    req.params.id,
+    req.body,
+    req.user!.userId,
+    req.user!.role,
+    req.user?.roles
+  );
 
   res.json({
     success: true,

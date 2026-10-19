@@ -294,7 +294,7 @@ class ApiService {
     return response.data.data!;
   }
 
-  async updateTicket(id: string, data: Partial<Ticket>): Promise<Ticket> {
+  async updateTicket(id: string, data: Partial<Ticket> & { transferReason?: string }): Promise<Ticket> {
     const response = await this.client.patch<ApiResponse<Ticket>>(`/tickets/${id}`, data);
     return response.data.data!;
   }

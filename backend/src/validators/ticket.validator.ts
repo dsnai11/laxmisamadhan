@@ -36,6 +36,8 @@ export const updateTicketSchema = z.object({
   status: z.nativeEnum(TicketStatus).optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),
+  departmentId: z.string().uuid().optional(),
+  transferReason: z.string().max(500).optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
   customFields: z.record(z.any()).optional(),
   assetIds: z.array(z.string().uuid()).optional(),

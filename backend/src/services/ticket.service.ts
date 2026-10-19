@@ -256,7 +256,13 @@ class TicketService {
     return u?.departmentId || undefined;
   }
 
-  async updateTicket(id: string, data: Partial<CreateTicketData>, userId: string, userRole: UserRole): Promise<any> {
+  async updateTicket(
+    id: string,
+    data: Partial<CreateTicketData> & { departmentId?: string; transferReason?: string },
+    userId: string,
+    userRole: UserRole,
+    userRoles?: UserRole[]
+  ): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
       where: { id },
       include: { department: true },
@@ -266,7 +272,9 @@ class TicketService {
       throw new Error('Ticket not found');
     }
 
-    if (!this.canModifyTicket(ticket, userId, userRole, await this.getUserDepartmentId(userId))) {
+    const userDeptId = await this.getUserDepartmentId(userId);
+
+    if (!this.canModifyTicket(ticket, userId, userRole, userDeptId, userRoles)) {
       throw new Error('Permission denied');
     }
 
@@ -274,23 +282,49 @@ class TicketService {
     const updates: Prisma.TicketUpdateInput = {};
 
     for (const [key, value] of Object.entries(data)) {
+      if (key === 'transferReason' || key === 'departmentId') continue;
       if (value !== undefined && ticket[key as keyof typeof ticket] !== value) {
         oldValues[key] = ticket[key as keyof typeof ticket];
         updates[key as keyof Prisma.TicketUpdateInput] = value;
       }
     }
 
+    // If transferring to a new department (e.g. raised in wrong department):
+    if (data.departmentId && data.departmentId !== ticket.departmentId) {
+      const allRoles: UserRole[] = Array.from(new Set([
+        ...(userRole ? [userRole] : []),
+        ...(userRoles || [])
+      ]));
+      const sameDept = !!userDeptId && userDeptId === ticket.departmentId;
+      const canTransfer = allRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))
+        || (ticket.department?.headId === userId)
+        || (allRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) && sameDept);
+
+      if (!canTransfer) {
+        throw new Error('Permission denied: Only Team Leads, Department Heads, and Admins can transfer ticket to another department');
+      }
+
+      updates.department = { connect: { id: data.departmentId } };
+      // Clear old assignment and team since they belong to the previous department
+      updates.assignedTo = { disconnect: true };
+      updates.team = { disconnect: true };
+      oldValues['departmentId'] = ticket.departmentId;
+      oldValues['assignedToId'] = ticket.assignedToId;
+      oldValues['teamId'] = ticket.teamId;
+    }
+
     if (Object.keys(updates).length === 0) {
       return ticket;
     }
 
-    if ((updates.priority || updates.category || updates.subCategory) && !ticket.resolvedAt) {
+    if ((updates.priority || updates.category || updates.subCategory || data.departmentId) && !ticket.resolvedAt) {
+      const targetDeptId = data.departmentId || ticket.departmentId;
       const newCategory = (updates.category as TicketCategory) || ticket.category;
       const newPriority = (updates.priority as TicketPriority) || ticket.priority;
       const newSubCategory = updates.subCategory !== undefined ? (updates.subCategory as string) : ticket.subCategory;
-      const newPolicy = await this.getApplicableSLAPolicy(ticket.departmentId, newCategory, newPriority, newSubCategory);
+      const newPolicy = await this.getApplicableSLAPolicy(targetDeptId, newCategory, newPriority, newSubCategory);
       if (newPolicy && newPolicy.id !== ticket.slaPolicyId) {
-        updates.slaPolicyId = newPolicy.id;
+        updates.slaPolicy = { connect: { id: newPolicy.id } };
         const newTimes = this.calculateSLATimes(newPolicy);
         if (!ticket.respondedAt && newTimes.responseDueAt) updates.responseDueAt = newTimes.responseDueAt;
         if (newTimes.resolutionDueAt) updates.resolutionDueAt = newTimes.resolutionDueAt;
@@ -304,8 +338,8 @@ class TicketService {
         updates: {
           create: Object.entries(oldValues).map(([field, oldValue]) => ({
             field,
-            oldValue: String(oldValue),
-            newValue: String(data[field as keyof CreateTicketData]),
+            oldValue: String(oldValue ?? ''),
+            newValue: String((data as any)[field] ?? ''),
             userId,
           })),
         },
@@ -323,7 +357,21 @@ class TicketService {
       await logActivity(userId, 'TICKET_UPDATED', `Updated ${field}`, id, { 
         field, 
         oldValue, 
-        newValue: data[field as keyof CreateTicketData] 
+        newValue: (data as any)[field] ?? null 
+      });
+    }
+
+    if (oldValues.departmentId && oldValues.departmentId !== updatedTicket.departmentId) {
+      const oldDeptName = ticket.department?.name || 'Previous Department';
+      const newDeptName = updatedTicket.department?.name || 'New Department';
+      const reasonStr = data.transferReason ? ` (Reason: ${data.transferReason})` : ' (Reassigned: Raised in wrong department)';
+      await prisma.comment.create({
+        data: {
+          ticketId: id,
+          userId,
+          content: `🔄 Department reassigned from ${oldDeptName} to ${newDeptName}${reasonStr}. Ticket unassigned and queued for ${newDeptName}.`,
+          isInternal: true,
+        },
       });
     }
 
@@ -876,12 +924,16 @@ class TicketService {
     return false;
   }
 
-  private canModifyTicket(ticket: any, userId: string, userRole: UserRole, userDeptId?: string): boolean {
-    if (['SUPER_ADMIN', 'ADMIN'].includes(userRole)) return true;
+  private canModifyTicket(ticket: any, userId: string, userRole: UserRole, userDeptId?: string, userRoles?: UserRole[]): boolean {
+    const allRoles: UserRole[] = Array.from(new Set([
+      ...(userRole ? [userRole] : []),
+      ...(userRoles || [])
+    ]));
+    if (allRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))) return true;
     if (ticket.assignedToId === userId) return true;
     if (ticket.raisedById === userId && ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'].includes(ticket.status)) return true;
     if (ticket.department?.headId === userId) return true;
-    if (['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(userRole) && userDeptId && ticket.departmentId === userDeptId) return true;
+    if (allRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) && userDeptId && ticket.departmentId === userDeptId) return true;
     return false;
   }
 
