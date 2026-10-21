@@ -77,7 +77,14 @@ class TicketService {
 
     const ticketNumber = await this.generateTicketNumber(data.departmentId);
     
-    const slaPolicy = await this.getApplicableSLAPolicy(data.departmentId, data.category, data.priority, data.subCategory);
+    const slaPolicy = await this.getApplicableSLAPolicy(
+      data.departmentId,
+      data.category,
+      data.priority,
+      data.subCategory,
+      data.subIssue || data.item
+    );
+    const effectivePriority = (slaPolicy?.priority as TicketPriority) || data.priority || TicketPriority.MEDIUM;
     const slaTimes = this.calculateSLATimes(slaPolicy);
 
     // Resolve team assignment for subCategory within department if configured
@@ -119,7 +126,7 @@ class TicketService {
         group: targetGroup || (data.group || 'Vendor Support-FMS'),
         site: data.site || null,
         teamId: targetTeamId || null,
-        priority: data.priority,
+        priority: effectivePriority,
         departmentId: data.departmentId,
         raisedById: data.raisedById,
         slaPolicyId: slaPolicy?.id,
@@ -331,7 +338,13 @@ class TicketService {
       const newCategory = (updates.category as TicketCategory) || ticket.category;
       const newPriority = (updates.priority as TicketPriority) || ticket.priority;
       const newSubCategory = updates.subCategory !== undefined ? (updates.subCategory as string) : ticket.subCategory;
-      const newPolicy = await this.getApplicableSLAPolicy(targetDeptId, newCategory, newPriority, newSubCategory);
+      const newPolicy = await this.getApplicableSLAPolicy(
+        targetDeptId,
+        newCategory,
+        newPriority,
+        newSubCategory,
+        (data as any).subIssue || ticket.subIssue || ticket.item
+      );
       if (newPolicy && newPolicy.id !== ticket.slaPolicyId) {
         updates.slaPolicy = { connect: { id: newPolicy.id } };
         const newTimes = this.calculateSLATimes(newPolicy);
@@ -986,53 +999,138 @@ class TicketService {
     return ticketNumber;
   }
 
-  private async getApplicableSLAPolicy(departmentId: string, category: TicketCategory, priority: TicketPriority, subCategory?: string | null) {
+  private async getApplicableSLAPolicy(
+    departmentId: string,
+    category: TicketCategory,
+    priority?: TicketPriority,
+    subCategory?: string | null,
+    subIssue?: string | null
+  ) {
     const cleanSubCat = subCategory?.trim();
+    const cleanSubIssue = subIssue?.trim();
+
+    // 0a. Specific Department + Sub-Issue match with Priority
+    if (cleanSubIssue && departmentId) {
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId,
+            subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      // 0b. Sub-Issue policy defines its own priority
+      const matchAnyPriority = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+          isActive: true,
+        },
+      });
+      if (matchAnyPriority) return matchAnyPriority;
+    }
+
+    // 0c. Global Sub-Issue match
+    if (cleanSubIssue) {
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId: null,
+            subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId: null,
+          subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+          isActive: true,
+        },
+      });
+      if (matchAny) return matchAny;
+    }
 
     // 1. Specific Department + Category + Subcategory + Priority
     if (cleanSubCat && departmentId && category) {
-      const match = await prisma.sLAPolicy.findFirst({
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId,
+            category,
+            subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId,
           category,
           subCategory: { equals: cleanSubCat, mode: 'insensitive' },
-          priority,
           isActive: true,
         },
       });
-      if (match) return match;
+      if (matchAny) return matchAny;
     }
 
     // 2. Department + Subcategory + Priority (any category)
     if (cleanSubCat && departmentId) {
-      const match = await prisma.sLAPolicy.findFirst({
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId,
+            category: null,
+            subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId,
-          category: null,
           subCategory: { equals: cleanSubCat, mode: 'insensitive' },
-          priority,
           isActive: true,
         },
       });
-      if (match) return match;
+      if (matchAny) return matchAny;
     }
 
     // 3. Global Subcategory + Priority
     if (cleanSubCat) {
-      const match = await prisma.sLAPolicy.findFirst({
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId: null,
+            ...(category ? { category } : {}),
+            subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId: null,
-          ...(category ? { category } : {}),
           subCategory: { equals: cleanSubCat, mode: 'insensitive' },
-          priority,
           isActive: true,
         },
       });
-      if (match) return match;
+      if (matchAny) return matchAny;
     }
 
     // 4. Department + Category + Priority (no subcategory constraint)
-    if (departmentId && category) {
+    if (departmentId && category && priority) {
       const match = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId,
@@ -1053,19 +1151,21 @@ class TicketService {
     if (categoryConfig?.slaPolicy) return categoryConfig.slaPolicy;
 
     // 6. Department general Priority SLA
-    const deptPolicy = await prisma.sLAPolicy.findFirst({
-      where: {
-        departmentId,
-        category: null,
-        subCategory: null,
-        priority,
-        isActive: true,
-      },
-    });
-    if (deptPolicy) return deptPolicy;
+    if (priority) {
+      const deptPolicy = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          category: null,
+          subCategory: null,
+          priority,
+          isActive: true,
+        },
+      });
+      if (deptPolicy) return deptPolicy;
+    }
 
     // 7. Global Category + Priority (no subcategory constraint)
-    if (category) {
+    if (category && priority) {
       const globalCat = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId: null,
@@ -1079,14 +1179,17 @@ class TicketService {
     }
 
     // 8. Global Priority Fallback
-    return prisma.sLAPolicy.findFirst({
-      where: {
-        departmentId: null,
-        priority,
-        isActive: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    if (priority) {
+      return prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId: null,
+          priority,
+          isActive: true,
+        },
+      });
+    }
+
+    return null;
   }
 
   private addBusinessMinutes(startDate: Date, minutesToAdd: number, excludesWeekends = true, holidays: string[] = [], startHour = 9, endHour = 18): Date {

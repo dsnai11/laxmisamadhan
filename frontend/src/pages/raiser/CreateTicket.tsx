@@ -7,8 +7,14 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { formatFileSize, humanize } from '@utils/helpers';
-import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader } from '@components/common/ui';
+import { formatDuration, formatFileSize, humanize } from '@utils/helpers';
+import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader, PriorityBadge } from '@components/common/ui';
+import {
+  HARDWARE_PRESET_SUB_CATEGORIES,
+  HARDWARE_PRESET_ITEMS,
+  SOFTWARE_PRESET_SUB_CATEGORIES,
+  SOFTWARE_PRESET_ITEMS,
+} from '@components/admin/CategoryConfigManager';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
@@ -44,6 +50,7 @@ export default function CreateTicket() {
   const watchedDept = watch('departmentId');
   const watchedCategory = watch('category');
   const watchedSubCategory = watch('subCategory');
+  const watchedSubIssue = watch('subIssue');
 
   const { data: deptCategoryConfigs } = useQuery<any[]>({
     queryKey: ['category-configs', watchedDept],
@@ -57,6 +64,11 @@ export default function CreateTicket() {
     enabled: !!watchedDept,
   });
 
+  const { data: slaPolicies } = useQuery<any[]>({
+    queryKey: ['sla-policies'],
+    queryFn: () => api.getSLAPolicies(),
+  });
+
   // Compute dynamic sub-categories / systems set up by Department Head
   const activeConfigs = (deptCategoryConfigs || []).filter((c) => c.isActive !== false);
   const currentCategoryConfig = activeConfigs.find((c) => c.category === watchedCategory);
@@ -65,13 +77,39 @@ export default function CreateTicket() {
   const mappedTeamId = watchedSubCategory ? subCategoryTeams[watchedSubCategory] : undefined;
   const assignedTeam = (deptTeams || []).find((t: any) => t.id === mappedTeamId);
 
-  const dynamicSubCategories: string[] = Array.isArray(categoryFormFields.subCategories) && categoryFormFields.subCategories.length > 0
-    ? categoryFormFields.subCategories
+  const selectedDeptObj = (departments || []).find((d: any) => d.id === watchedDept);
+  const isHwDept = selectedDeptObj?.name?.toLowerCase().includes('hardware') || watchedCategory === 'HARDWARE_REQUEST';
+  const isSwDept = selectedDeptObj?.name?.toLowerCase().includes('software') || watchedCategory === 'SOFTWARE_REQUEST';
+
+  const fallbackSubCats = isSwDept
+    ? SOFTWARE_PRESET_SUB_CATEGORIES
+    : isHwDept
+    ? HARDWARE_PRESET_SUB_CATEGORIES
     : ['LOS', 'LMS', 'CRM', 'CLU-collection', 'Desktop', 'Laptop', 'Peripheral', 'Software', 'Network'];
 
+  const dynamicSubCategories: string[] = Array.isArray(categoryFormFields.subCategories) && categoryFormFields.subCategories.length > 0
+    ? categoryFormFields.subCategories
+    : fallbackSubCats;
+
+  const fallbackSubIssuesMap = isSwDept
+    ? SOFTWARE_PRESET_ITEMS
+    : isHwDept
+    ? HARDWARE_PRESET_ITEMS
+    : {};
+
   const dynamicSubIssues: string[] = watchedSubCategory
-    ? (categoryFormFields.subIssues?.[watchedSubCategory] || categoryFormFields.items?.[watchedSubCategory] || [])
+    ? (categoryFormFields.subIssues?.[watchedSubCategory] || categoryFormFields.items?.[watchedSubCategory] || fallbackSubIssuesMap[watchedSubCategory] || [])
     : [];
+
+  const matchingSLA = (slaPolicies || []).find((p: any) => {
+    if (!p.isActive) return false;
+    const matchesDept = !p.departmentId || p.departmentId === watchedDept;
+    if (!matchesDept) return false;
+    const sub = p.subCategory?.toLowerCase();
+    if (watchedSubIssue && sub === watchedSubIssue.toLowerCase()) return true;
+    if (watchedSubCategory && sub === watchedSubCategory.toLowerCase()) return true;
+    return false;
+  });
 
   const onFilesSelected = (list: FileList | null) => {
     if (!list) return;
@@ -203,6 +241,30 @@ export default function CreateTicket() {
               />
             )}
           </Field>
+        )}
+
+        {/* Dynamic SLA Guarantee Banner */}
+        {matchingSLA && (
+          <div className="rounded-xl p-4 bg-gradient-to-r from-blue-50 to-indigo-50/60 dark:from-slate-800 dark:to-slate-800/80 border border-blue-200/80 dark:border-blue-900/40 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white font-bold shadow-xs">
+                ⏱️
+              </span>
+              <div>
+                <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>SLA Guarantee: {matchingSLA.name}</span>
+                  <PriorityBadge priority={matchingSLA.priority} />
+                </div>
+                <div className="text-gray-600 dark:text-gray-300 mt-0.5">
+                  Initial Response: <strong className="text-gray-900 dark:text-white">{formatDuration(matchingSLA.responseTimeMins)}</strong> · Target Resolution: <strong className="text-gray-900 dark:text-white">{formatDuration(matchingSLA.resolutionTimeMins)}</strong>
+                  {matchingSLA.businessHoursOnly && ' (Business hours)'}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-md border border-gray-200 dark:border-slate-700 font-medium">
+              Escalation: L1 Support → L2 Expert → L3 Mgr (75%) → L4 OEM
+            </div>
+          </div>
         )}
 
         {/* 3. Title / Subject */}

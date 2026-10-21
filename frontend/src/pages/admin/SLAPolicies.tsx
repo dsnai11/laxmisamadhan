@@ -55,6 +55,10 @@ export default function AdminSLAPolicies() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<any | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDept, setFilterDept] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+
   const activeDeptId = isDeptHeadOrLead ? (user?.departmentId || '') : form.departmentId;
   const { data: deptCategoryConfigs } = useQuery<any[]>({
     queryKey: ['category-configs', activeDeptId],
@@ -140,7 +144,22 @@ export default function AdminSLAPolicies() {
   if (isLoading) return <PageLoader />;
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
 
-  const list = policies || [];
+  const rawList = policies || [];
+  const list = rawList.filter((p) => {
+    if (filterDept) {
+      if (filterDept === 'global' && p.departmentId) return false;
+      if (filterDept !== 'global' && p.departmentId !== filterDept) return false;
+    }
+    if (filterPriority && p.priority !== filterPriority) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = p.name?.toLowerCase().includes(q);
+      const matchSub = p.subCategory?.toLowerCase().includes(q);
+      const matchDept = p.department?.name?.toLowerCase().includes(q);
+      if (!matchName && !matchSub && !matchDept) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -158,6 +177,59 @@ export default function AdminSLAPolicies() {
           <div className="card p-4"><p className="text-sm text-gray-500">Avg resolution</p><p className="text-2xl font-bold">{formatDuration(compliance.avgResolutionTime)}</p></div>
         </div>
       )}
+
+      {/* Filter and Search Bar */}
+      <div className="card p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="flex-1">
+          <input
+            type="search"
+            className="input text-sm"
+            placeholder="Search policies by name, sub-category, or department..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="input text-sm w-auto min-w-[170px]"
+            value={filterDept}
+            onChange={(e) => setFilterDept(e.target.value)}
+          >
+            <option value="">All Departments</option>
+            <option value="global">Global Fallbacks Only</option>
+            {(departments || []).map((d: any) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="input text-sm w-auto min-w-[140px]"
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+          >
+            <option value="">All Priorities</option>
+            <option value="CRITICAL">Critical (P1)</option>
+            <option value="HIGH">High (P2)</option>
+            <option value="MEDIUM">Medium (P3)</option>
+            <option value="LOW">Low (P4)</option>
+          </select>
+
+          {(searchQuery || filterDept || filterPriority) && (
+            <button
+              className="btn-ghost btn-sm text-xs text-gray-500"
+              onClick={() => {
+                setSearchQuery('');
+                setFilterDept('');
+                setFilterPriority('');
+              }}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="card">
         {list.length === 0 ? (
