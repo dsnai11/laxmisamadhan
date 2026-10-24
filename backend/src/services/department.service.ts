@@ -542,15 +542,24 @@ class DepartmentService {
     params: { page?: number; limit?: number; status?: string; assignedToId?: string; priority?: string },
     requestingUserId: string,
     requestingUserRole: string,
+    requestingUserRoles?: string[],
   ): Promise<any> {
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      include: { members: { select: { id: true } } },
+      include: { members: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } } },
     });
     if (!team) throw new Error('Team not found');
 
-    // TEAM_LEAD can only view their own team's bucket
-    if (requestingUserRole === 'TEAM_LEAD' && team.leadId !== requestingUserId) {
+    const effectiveRoles: string[] = Array.from(new Set([
+      ...(requestingUserRole ? [requestingUserRole] : []),
+      ...(requestingUserRoles || [])
+    ]));
+
+    const isLeadership = effectiveRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
+    const isLeadOfTeam = team.leadId === requestingUserId;
+    const isMemberOfTeam = team.members.some((m: any) => m.id === requestingUserId);
+
+    if (!isLeadership && !isLeadOfTeam && !isMemberOfTeam) {
       throw new Error('Access denied: you can only view your own team bucket');
     }
 
@@ -558,9 +567,15 @@ class DepartmentService {
     const page = params.page || 1;
     const limit = params.limit || 20;
 
-    const where: any = { assignedToId: { in: memberIds } };
+    const where: any = memberIds.length > 0
+      ? { OR: [{ teamId: team.id }, { assignedToId: { in: memberIds } }] }
+      : { teamId: team.id };
+
     if (params.status) where.status = params.status;
-    if (params.assignedToId) where.assignedToId = params.assignedToId;
+    if (params.assignedToId) {
+      delete where.OR;
+      where.assignedToId = params.assignedToId;
+    }
     if (params.priority) where.priority = params.priority;
 
     const [tickets, total] = await Promise.all([

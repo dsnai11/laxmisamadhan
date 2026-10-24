@@ -202,6 +202,7 @@ export const getTeamBucket = asyncHandler(async (req: AuthenticatedRequest, res:
     { page: page ? parseInt(page) : 1, limit: limit ? parseInt(limit) : 20, status, assignedToId, priority },
     req.user!.userId,
     req.user!.role,
+    req.user!.roles,
   );
 
   res.json({

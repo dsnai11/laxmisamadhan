@@ -20,25 +20,39 @@ export default function TeamBucket() {
   const [filterMember, setFilterMember] = useState('');
   const [reassigning, setReassigning] = useState<{ ticketId: string; currentAssignee: string } | null>(null);
   const [newAssignee, setNewAssignee] = useState('');
-
-  const departmentId = user?.departmentId || '';
-
-  // Fetch all teams in department to find the one this user leads
-  const { data: allTeams, isLoading: teamsLoading } = useQuery({
-    queryKey: ['my-dept-teams', departmentId],
-    queryFn: () => api.getMyTeam(departmentId),
-    enabled: !!departmentId,
-  });
-
-  const myTeam = (allTeams || []).find((t: any) => t.leadId === user?.id || (t.members || []).some((m: any) => m.id === user?.id));
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
 
   const userRoles = Array.from(new Set([
     ...(user?.role ? [user.role] : []),
     ...(user?.roles || [])
   ]));
-  const canReassign = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) || myTeam?.leadId === user?.id;
+  const isLeadership = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
 
-  const { data: bucketData, isLoading: bucketLoading, error, refetch } = useQuery({
+  // If user has no department assigned (e.g. SUPER_ADMIN), fetch departments list
+  const { data: allDepts } = useQuery({
+    queryKey: ['all-departments-bucket'],
+    queryFn: () => api.getDepartments(),
+    enabled: !user?.departmentId && isLeadership,
+  });
+
+  const departmentId = user?.departmentId || selectedDeptId || (allDepts?.[0]?.id) || '';
+
+  // Fetch all teams in department
+  const { data: allTeams, isLoading: teamsLoading, error: teamsError, refetch: refetchTeams } = useQuery({
+    queryKey: ['my-dept-teams', departmentId],
+    queryFn: () => api.getMyTeam(departmentId),
+    enabled: !!departmentId,
+  });
+
+  const eligibleTeams = (allTeams || []).filter((t: any) =>
+    isLeadership || t.leadId === user?.id || (t.members || []).some((m: any) => m.id === user?.id)
+  );
+
+  const myTeam = eligibleTeams.find((t: any) => t.id === (selectedTeamId || eligibleTeams[0]?.id)) || eligibleTeams[0];
+  const canReassign = isLeadership || userRoles.includes('TEAM_LEAD') || myTeam?.leadId === user?.id;
+
+  const { data: bucketData, isLoading: bucketLoading, error: bucketError, refetch: refetchBucket } = useQuery({
     queryKey: ['team-bucket', departmentId, myTeam?.id, page, status, priority, filterMember],
     queryFn: () =>
       api.getTeamBucket(departmentId, myTeam!.id, {
@@ -64,6 +78,7 @@ export default function TeamBucket() {
   });
 
   if (teamsLoading || bucketLoading) return <PageLoader />;
+  if (teamsError) return <ErrorState error={teamsError} onRetry={() => refetchTeams()} />;
   if (!myTeam) {
     return (
       <div className="space-y-6">
@@ -75,7 +90,7 @@ export default function TeamBucket() {
       </div>
     );
   }
-  if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
+  if (bucketError) return <ErrorState error={bucketError} onRetry={() => refetchBucket()} />;
 
   const tickets: any[] = bucketData?.tickets || [];
   const totalPages: number = bucketData?.totalPages || 1;
@@ -83,10 +98,51 @@ export default function TeamBucket() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Team Bucket — ${myTeam.name}`}
-        subtitle={`${bucketData?.total ?? 0} tickets across ${members.length} team members`}
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <PageHeader
+          title={`Team Bucket — ${myTeam.name}`}
+          subtitle={`${bucketData?.total ?? 0} tickets across ${members.length} team members`}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          {allDepts && allDepts.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-500 uppercase">Dept:</span>
+              <select
+                className="input input-sm text-sm"
+                value={departmentId}
+                onChange={(e) => {
+                  setSelectedDeptId(e.target.value);
+                  setSelectedTeamId('');
+                  setPage(1);
+                  setFilterMember('');
+                }}
+              >
+                {allDepts.map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {eligibleTeams.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-500 uppercase">Team:</span>
+              <select
+                className="input input-sm text-sm font-medium"
+                value={myTeam.id}
+                onChange={(e) => {
+                  setSelectedTeamId(e.target.value);
+                  setPage(1);
+                  setFilterMember('');
+                }}
+              >
+                {eligibleTeams.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Member stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

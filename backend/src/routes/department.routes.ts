@@ -31,6 +31,6 @@ router.post('/:id/teams', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD',
 router.patch('/:id/teams/:teamId', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.updateTeamSchema), departmentController.updateTeam);
 router.delete('/:id/teams/:teamId', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), departmentController.deleteTeam);
 // Team bucket — visible to admin, dept head, and team lead (ownership enforced in service)
-router.get('/:id/teams/:teamId/bucket', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), departmentController.getTeamBucket);
+router.get('/:id/teams/:teamId/bucket', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'), departmentController.getTeamBucket);
 
 export default router;
