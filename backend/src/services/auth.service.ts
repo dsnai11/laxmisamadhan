@@ -158,6 +158,7 @@ class AuthService {
       roles: userRoles,
       status: user.status,
       departmentId: user.departmentId || undefined,
+      canViewTeamBucket: user.canViewTeamBucket || false,
       permissions,
       sessionId: session.id,
     });
@@ -180,6 +181,7 @@ class AuthService {
         roles: userRoles,
         status: user.status,
         departmentId: user.departmentId,
+        canViewTeamBucket: user.canViewTeamBucket || false,
         mfaEnabled: user.mfaEnabled,
         avatar: user.avatar,
       },
@@ -219,6 +221,7 @@ class AuthService {
       roles: userRoles,
       status: user.status,
       departmentId: user.departmentId,
+      canViewTeamBucket: user.canViewTeamBucket || false,
       mfaEnabled: user.mfaEnabled,
       avatar: user.avatar,
       permissions,

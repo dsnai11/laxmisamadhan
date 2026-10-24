@@ -31,6 +31,7 @@ import escalationRoutes from '@routes/escalation.routes';
 import macroRoutes from '@routes/macro.routes';
 import emailRoutes from '@routes/email.routes';
 import escalationService from '@services/escalation.service';
+import mailPollerService from '@services/mailPoller.service';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -138,6 +139,9 @@ const startBackgroundJobs = () => {
       where: { expiresAt: { lt: new Date() }, revokedAt: null },
     }).catch(err => logger.error('Session cleanup failed', { error: err.message }));
   }, 60 * 60 * 1000);
+
+  // Inbound support email listener (polls IMAP inbox every 60 seconds)
+  mailPollerService.start(60 * 1000);
 
   logger.info('Background jobs started');
 };

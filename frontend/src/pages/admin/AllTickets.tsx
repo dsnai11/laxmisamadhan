@@ -12,7 +12,7 @@ import RequesterHoverCard from '@components/tickets/RequesterHoverCard';
 import InboundEmailSimulatorModal from '@components/email/InboundEmailSimulatorModal';
 import {
   PencilIcon, EnvelopeIcon, PaperClipIcon, BoltIcon, FunnelIcon, AdjustmentsHorizontalIcon,
-  UserPlusIcon, ArrowsRightLeftIcon, LinkIcon, CalendarIcon, ChevronDownIcon, LockClosedIcon,
+  UserPlusIcon, ArrowsRightLeftIcon, LinkIcon, CalendarIcon, ChevronDownIcon, LockClosedIcon, ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 const TAB_FILTERS = [
@@ -36,6 +36,24 @@ export default function AdminAllTickets() {
   const [selected, setSelected] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState('30days');
   const [assigneeId, setAssigneeId] = useState('');
+  const [syncingEmails, setSyncingEmails] = useState(false);
+
+  const handleSyncEmails = async () => {
+    setSyncingEmails(true);
+    try {
+      const res = await api.syncInboundEmails();
+      if (res?.processed > 0) {
+        toast.success(`Processed ${res.processed} new email ticket(s)!`);
+        qc.invalidateQueries({ queryKey: ['admin-tickets'] });
+      } else {
+        toast.success('Inbound support inbox is up to date.');
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to sync inbound emails');
+    } finally {
+      setSyncingEmails(false);
+    }
+  };
 
   const [sortBy, sortOrder] = sort.split(':') as [string, 'asc' | 'desc'];
   const { data: departments } = useQuery({ queryKey: ['departments'], queryFn: () => api.getDepartments() });
@@ -167,6 +185,15 @@ export default function AdminAllTickets() {
           <p className="text-xs text-gray-500">Manage, assign, and track IT support tickets</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleSyncEmails}
+            disabled={syncingEmails}
+            title="Check mail.lifc.in for new incoming support emails"
+            className="btn-secondary text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1.5"
+          >
+            <ArrowPathIcon className={`w-3.5 h-3.5 ${syncingEmails ? 'animate-spin text-primary-600' : 'text-emerald-600'}`} />
+            <span className="hidden xs:inline">{syncingEmails ? 'Checking...' : 'Sync Emails'}</span>
+          </button>
           <button
             onClick={() => setShowEmailSimulator(true)}
             className="btn-secondary text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"

@@ -543,6 +543,7 @@ class DepartmentService {
     requestingUserId: string,
     requestingUserRole: string,
     requestingUserRoles?: string[],
+    requestingUserCanViewBucket?: boolean,
   ): Promise<any> {
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -556,11 +557,12 @@ class DepartmentService {
     ]));
 
     const isLeadership = effectiveRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
-    const isLeadOfTeam = team.leadId === requestingUserId;
+    const isLeadOfTeam = team.leadId === requestingUserId || effectiveRoles.includes('TEAM_LEAD');
     const isMemberOfTeam = team.members.some((m: any) => m.id === requestingUserId);
+    const hasBucketPermission = isLeadership || isLeadOfTeam || (isMemberOfTeam && Boolean(requestingUserCanViewBucket));
 
-    if (!isLeadership && !isLeadOfTeam && !isMemberOfTeam) {
-      throw new Error('Access denied: you can only view your own team bucket');
+    if (!hasBucketPermission) {
+      throw new Error('Access denied: you do not have permission to view this team bucket');
     }
 
     const memberIds = team.members.map((m: any) => m.id);

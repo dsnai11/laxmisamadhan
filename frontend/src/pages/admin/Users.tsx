@@ -28,7 +28,7 @@ const statusBadge: Record<string, string> = {
   PENDING_VERIFICATION: 'badge-warning',
 };
 
-const emptyForm = { firstName: '', lastName: '', email: '', phone: '', employeeId: '', role: 'RAISER', roles: ['RAISER'], departmentId: '', temporaryPassword: '' };
+const emptyForm = { firstName: '', lastName: '', email: '', phone: '', employeeId: '', role: 'RAISER', roles: ['RAISER'], departmentId: '', temporaryPassword: '', canViewTeamBucket: false };
 
 interface BulkUserRow {
   id: string;
@@ -504,6 +504,14 @@ export default function AdminUsers() {
                               {humanize(r)}
                             </span>
                           ))}
+                          {u.canViewTeamBucket && (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                              title="User has explicit Team Bucket Access"
+                            >
+                              Team Bucket
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="text-sm text-gray-600 dark:text-slate-300">
@@ -605,6 +613,20 @@ export default function AdminUsers() {
               {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
+          <div className="md:col-span-2">
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/40 hover:bg-gray-100/50 transition-colors cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.canViewTeamBucket}
+                onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">Grant Team Bucket Access</span>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Allow this user to access the team queue and view team tickets</p>
+              </div>
+            </label>
+          </div>
           <div className="md:col-span-2">
             <Field label="Temporary password" hint="At least 8 characters. Share it with the user securely; they can change it after signing in.">
               <input type="text" className="input" autoComplete="off" value={form.temporaryPassword} onChange={(e) => setForm({ ...form, temporaryPassword: e.target.value })} />

@@ -108,11 +108,13 @@ export default function MobileBottomNav({ onOpenMore }: MobileBottomNavProps) {
         name: 'Raise',
       },
       {
-        name: 'Team',
-        href: '/agent/team-bucket',
+        name: (isAdmin || userRoles.includes('TEAM_LEAD') || Boolean(user?.canViewTeamBucket)) ? 'Team' : 'My Work',
+        href: (isAdmin || userRoles.includes('TEAM_LEAD') || Boolean(user?.canViewTeamBucket)) ? '/agent/team-bucket' : '/agent/my-assignments',
         icon: UserGroupIcon,
         iconActive: UserGroupIconSolid,
-        isActive: location.pathname.startsWith('/agent/team-bucket'),
+        isActive: (isAdmin || userRoles.includes('TEAM_LEAD') || Boolean(user?.canViewTeamBucket))
+          ? location.pathname.startsWith('/agent/team-bucket')
+          : location.pathname.startsWith('/agent/my-assignments'),
       },
       {
         isMore: true,

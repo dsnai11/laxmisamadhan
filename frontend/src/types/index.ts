@@ -18,6 +18,7 @@ export interface User {
   status: UserStatus;
   departmentId?: string;
   department?: Department;
+  canViewTeamBucket?: boolean;
   managerId?: string;
   mfaEnabled: boolean;
   emailVerified: boolean;
@@ -176,6 +177,7 @@ export interface SLAPolicy {
   description?: string;
   departmentId?: string;
   department?: Department;
+  canViewTeamBucket?: boolean;
   category?: TicketCategory;
   subCategory?: string;
   priority: TicketPriority;

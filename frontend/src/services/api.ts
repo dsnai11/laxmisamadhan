@@ -451,6 +451,16 @@ class ApiService {
     return response.data.data!;
   }
 
+  async syncInboundEmails(): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>('/email/sync');
+    return response.data.data!;
+  }
+
+  async getEmailStatus(): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/email/status');
+    return response.data.data!;
+  }
+
   async assignDepartmentHead(departmentId: string, headId: string | null): Promise<Department> {
     const response = await this.client.patch<ApiResponse<Department>>(`/departments/${departmentId}/head`, { headId });
     return response.data.data!;

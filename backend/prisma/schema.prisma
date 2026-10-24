@@ -129,6 +129,7 @@ model User {
   passwordResetToken String?
   passwordResetExpires DateTime?
   departmentId      String?
+  canViewTeamBucket Boolean   @default(false)
   department        Department? @relation("UserDepartment", fields: [departmentId], references: [id])
   managerId         String?
   manager           User?     @relation("UserManager", fields: [managerId], references: [id])

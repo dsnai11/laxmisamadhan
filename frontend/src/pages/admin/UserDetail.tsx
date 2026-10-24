@@ -52,6 +52,7 @@ export default function AdminUserDetail() {
     role: string;
     roles: string[];
     status: string;
+    canViewTeamBucket: boolean;
   }>({
     email: '',
     firstName: '',
@@ -69,6 +70,7 @@ export default function AdminUserDetail() {
     role: '',
     roles: [],
     status: '',
+    canViewTeamBucket: false,
   });
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -96,6 +98,7 @@ export default function AdminUserDetail() {
         role: user.role,
         roles: currentRoles,
         status: user.status,
+        canViewTeamBucket: user.canViewTeamBucket || false,
       });
     }
   }, [user]);
@@ -137,6 +140,7 @@ export default function AdminUserDetail() {
         state: form.state.trim() || null,
         reportingManagerName: form.reportingManagerName.trim() || null,
         departmentRaiserName: form.departmentRaiserName.trim() || null,
+        canViewTeamBucket: form.canViewTeamBucket,
         ...(isOrgWide ? { departmentId: (form.departmentId || null) as any } : {}),
       } as any);
       const oldRoles = ((user.roles && user.roles.length > 0 ? user.roles : [user.role]) as string[]).slice().sort();
@@ -295,6 +299,25 @@ export default function AdminUserDetail() {
                 );
               })}
             </div>
+          </Field>
+        </div>
+        <div className="md:col-span-2">
+          <Field label="Special Privileges / Permissions" hint="Control granular feature access for this user without changing their primary role.">
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/40 hover:bg-gray-100/60 transition-colors cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={!editable}
+                checked={form.canViewTeamBucket}
+                onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+              />
+              <div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">Team Bucket Access</span>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Allow this agent to access the Team Bucket and view tickets assigned to their team queue.
+                </p>
+              </div>
+            </label>
           </Field>
         </div>
         <div className="md:col-span-2 flex justify-end">

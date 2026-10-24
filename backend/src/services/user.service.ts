@@ -28,6 +28,7 @@ interface CreateUserData {
   roles?: UserRole[];
   status?: UserStatus;
   departmentId?: string;
+  canViewTeamBucket?: boolean;
   managerId?: string;
   sendWelcomeEmail?: boolean;
   temporaryPassword?: string;
@@ -50,6 +51,7 @@ interface UpdateUserData {
   roles?: UserRole[];
   status?: UserStatus;
   departmentId?: string | null;
+  canViewTeamBucket?: boolean;
   managerId?: string | null;
   avatar?: string | null;
 }
@@ -193,6 +195,7 @@ class UserService {
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -297,6 +300,8 @@ class UserService {
           roles: true,
           status: true,
           departmentId: true,
+        canViewTeamBucket: true,
+          canViewTeamBucket: true,
           managerId: true,
           avatar: true,
           mfaEnabled: true,
@@ -339,6 +344,7 @@ class UserService {
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -441,6 +447,7 @@ class UserService {
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,

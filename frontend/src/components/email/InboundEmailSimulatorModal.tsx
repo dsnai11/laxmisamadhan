@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { Modal, Field } from '@components/common/ui';
-import { EnvelopeIcon, SparklesIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { EnvelopeIcon, SparklesIcon, CheckCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface Props {
   open: boolean;
@@ -14,7 +14,20 @@ interface Props {
 export default function InboundEmailSimulatorModal({ open, onClose, departments = [] }: Props) {
   const navigate = useNavigate();
   const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<any | null>(null);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.syncInboundEmails();
+      toast.success(res?.processed > 0 ? `Synced! Found and processed ${res.processed} new email(s).` : 'Mailbox is up to date. No new unread emails.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to sync with mail server');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const [form, setForm] = useState({
     fromEmail: 'sourabh.sharma@lifc.in',
@@ -46,10 +59,30 @@ export default function InboundEmailSimulatorModal({ open, onClose, departments 
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="📧 Inbound Email-to-Ticket Gateway Simulator">
+    <Modal open={open} onClose={onClose} title="📧 Inbound Email Support & Gateway">
       <div className="space-y-4 text-xs">
-        <p className="text-gray-600">
-          Simulate an incoming email sent to <strong>project.lifc.in</strong>, <strong>it.support@lifc.in</strong>, <strong>hr.support@lifc.in</strong>, or any team support email. The system automatically creates a ticket routed to the correct department team!
+        {/* Live IMAP Server Status */}
+        <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white">Active Inbound Mail Listener</p>
+              <p className="text-[11px] text-gray-500 dark:text-slate-400">mail.lifc.in (Account: laxmisamadhan@lifc.in) • Auto-polling every 60s</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={handleSync}
+            className="btn-secondary text-xs py-1 px-3 self-start sm:self-auto flex items-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-50"
+          >
+            <ArrowPathIcon className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary-600' : 'text-emerald-600'}`} />
+            {syncing ? 'Checking...' : 'Sync Mailbox Now'}
+          </button>
+        </div>
+
+        <p className="text-gray-600 dark:text-slate-300">
+          Emails sent to <strong>laxmisamadhan@lifc.in</strong>, <strong>it.support@lifc.in</strong>, or team emails are automatically converted into tickets. You can also test with the simulator below:
         </p>
 
         {result ? (

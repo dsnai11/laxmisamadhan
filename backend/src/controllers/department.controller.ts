@@ -203,6 +203,7 @@ export const getTeamBucket = asyncHandler(async (req: AuthenticatedRequest, res:
     req.user!.userId,
     req.user!.role,
     req.user!.roles,
+    Boolean(req.user!.canViewTeamBucket),
   );
 
   res.json({

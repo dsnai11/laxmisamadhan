@@ -30,7 +30,26 @@ router.post('/:id/teams', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD',
 // TEAM_LEAD can update their own team (service layer enforces ownership)
 router.patch('/:id/teams/:teamId', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.updateTeamSchema), departmentController.updateTeam);
 router.delete('/:id/teams/:teamId', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), departmentController.deleteTeam);
-// Team bucket — visible to admin, dept head, and team lead (ownership enforced in service)
-router.get('/:id/teams/:teamId/bucket', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'), departmentController.getTeamBucket);
+const requireTeamBucketAccess = (req: any, res: any, next: any) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required', code: 'UNAUTHORIZED' });
+  }
+  const userRoles = req.user.roles && req.user.roles.length > 0 ? req.user.roles : [req.user.role];
+  const isLeadershipOrLead = userRoles.some((r: string) => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r));
+  const hasBucketFlag = Boolean(req.user.canViewTeamBucket);
+
+  if (isLeadershipOrLead || hasBucketFlag) {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    error: 'Insufficient permissions: You do not have permission to access the team bucket',
+    code: 'FORBIDDEN',
+  });
+};
+
+// Team bucket — visible to admin, dept head, team lead, or explicitly permitted agents
+router.get('/:id/teams/:teamId/bucket', requireTeamBucketAccess, departmentController.getTeamBucket);
 
 export default router;

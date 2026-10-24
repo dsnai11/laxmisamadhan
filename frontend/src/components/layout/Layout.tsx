@@ -55,11 +55,17 @@ const agentNavigation = [
 ];
 
 
-function getNavigation(userRoles: string[]) {
+function getNavigation(userRoles: string[], canViewTeamBucket?: boolean) {
   const isAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
   const isAgent = userRoles.some(r => ['AGENT', 'TEAM_LEAD'].includes(r));
   const list = isAdmin ? navigation : isAgent ? agentNavigation : raiserNavigation;
-  return list.filter((item) => item.roles.some(r => userRoles.includes(r)));
+  return list.filter((item) => {
+    if (item.href === '/agent/team-bucket') {
+      const isLeadOrAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r));
+      return isLeadOrAdmin || Boolean(canViewTeamBucket);
+    }
+    return item.roles.some(r => userRoles.includes(r));
+  });
 }
 
 function getPortalName(userRoles: string[]) {
@@ -90,7 +96,7 @@ export default function Layout() {
   const { isDarkMode, toggleTheme } = useTheme();
 
   const userRoles = user?.roles && user.roles.length > 0 ? (user.roles as string[]) : [user?.role || ''];
-  const navItems = getNavigation(userRoles);
+  const navItems = getNavigation(userRoles, user?.canViewTeamBucket);
   const portalName = getPortalName(userRoles);
 
   const rootPaths = [
