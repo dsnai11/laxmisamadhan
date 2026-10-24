@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect } from 'react';
 import { Outlet, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Dialog, Transition, Menu } from '@headlessui/react';
-import { XMarkIcon, Bars3Icon, BellIcon, UserCircleIcon, MoonIcon, SunIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, Bars3Icon, BellIcon, UserCircleIcon, MoonIcon, SunIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '@context/AuthContext';
 import { useSocket } from '@context/SocketContext';
 import { useTheme } from '@context/ThemeContext';
@@ -362,6 +362,36 @@ export default function Layout() {
               )}
               <img src="/logo.jpg" alt="Laxmi India Finance Ltd" className="h-8 w-8 rounded object-cover lg:hidden border border-gray-200 dark:border-slate-700 shrink-0" />
               <h1 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-white truncate min-w-0">{portalName}</h1>
+            </div>
+
+            {/* Quick Header Search */}
+            <div className="hidden md:flex flex-1 max-w-sm lg:max-w-md mx-3">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const input = (e.currentTarget.elements.namedItem('headerSearch') as HTMLInputElement)?.value?.trim();
+                  if (!input) return;
+                  const isAgent = userRoles.some(r => ['AGENT', 'TEAM_LEAD'].includes(r));
+                  const isAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
+                  const target = isAdmin
+                    ? `/admin/tickets?search=${encodeURIComponent(input)}`
+                    : isAgent
+                    ? `/agent/my-assignments?search=${encodeURIComponent(input)}`
+                    : `/raiser/my-tickets?search=${encodeURIComponent(input)}`;
+                  navigate(target);
+                }}
+                className="w-full relative"
+              >
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-slate-500">
+                  <MagnifyingGlassIcon className="h-4 w-4" />
+                </div>
+                <input
+                  name="headerSearch"
+                  type="search"
+                  placeholder="Search tickets by ID, title, keyword..."
+                  className="input pl-9 pr-3 py-1.5 text-xs w-full rounded-lg bg-gray-100/80 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                />
+              </form>
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">

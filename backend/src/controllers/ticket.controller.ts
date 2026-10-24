@@ -204,13 +204,17 @@ export const deleteTicket = asyncHandler(async (req: AuthenticatedRequest, res: 
 });
 
 export const getTicketStats = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { departmentId } = req.query;
-  
+  const { departmentId, assignedToId, assignedToMe } = req.query as any;
+  const targetAssignedToId = (assignedToMe === 'true' || assignedToMe === true)
+    ? req.user!.userId
+    : (assignedToId as string);
+
   const stats = await ticketService.getTicketStats(
     departmentId as string,
     req.user!.userId,
     req.user!.role,
-    req.user!.departmentId
+    req.user!.departmentId,
+    targetAssignedToId
   );
 
   res.json({

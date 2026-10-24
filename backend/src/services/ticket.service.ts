@@ -850,19 +850,41 @@ class TicketService {
     await logActivity(userId, 'TICKET_DELETED', `Deleted ticket ${ticket.ticketNumber}`, id);
   }
 
-  async getTicketStats(departmentId?: string, userId?: string, userRole?: UserRole, userDepartmentId?: string): Promise<any> {
+  async getTicketStats(
+    departmentId?: string,
+    userId?: string,
+    userRole?: UserRole,
+    userDepartmentId?: string,
+    assignedToId?: string
+  ): Promise<any> {
     const where: Prisma.TicketWhereInput = {};
 
     if (departmentId) where.departmentId = departmentId;
+    if (assignedToId) where.assignedToId = assignedToId;
     const visibility = this.buildVisibilityFilter(userId, userRole, userDepartmentId);
     if (visibility) where.AND = [visibility];
 
-    const [byStatus, byPriority, byCategory, slaStats] = await Promise.all([
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [byStatus, byPriority, byCategory, slaStats, resolvedTodayCount] = await Promise.all([
       prisma.ticket.groupBy({ by: ['status'], where, _count: true }),
       prisma.ticket.groupBy({ by: ['priority'], where, _count: true }),
       prisma.ticket.groupBy({ by: ['category'], where, _count: true }),
       prisma.ticket.groupBy({ by: ['slaStatus'], where, _count: true }),
+      prisma.ticket.count({
+        where: {
+          ...where,
+          status: TicketStatus.RESOLVED,
+          resolvedAt: { gte: todayStart },
+        },
+      }),
     ]);
+
+    const statusMap = byStatus.reduce((acc, s) => {
+      acc[s.status] = s._count;
+      return acc;
+    }, {} as Record<string, number>);
 
     return {
       byStatus: byStatus.map(s => ({ status: s.status, count: s._count })),
@@ -870,6 +892,11 @@ class TicketService {
       byCategory: byCategory.map(c => ({ category: c.category, count: c._count })),
       slaStats: slaStats.map(s => ({ status: s.slaStatus, count: s._count })),
       totalTickets: byStatus.reduce((sum, s) => sum + s._count, 0),
+      openCount: statusMap[TicketStatus.OPEN] || 0,
+      resolvedCount: statusMap[TicketStatus.RESOLVED] || 0,
+      reopenedCount: statusMap[TicketStatus.REOPENED] || 0,
+      dependencyCount: statusMap[TicketStatus.DEPENDENCY_ON_CLIENT] || 0,
+      resolvedTodayCount,
     };
   }
 
@@ -906,11 +933,38 @@ class TicketService {
     }
 
     if (params.search) {
+      const q = params.search.trim();
       and.push({
         OR: [
-          { ticketNumber: { contains: params.search, mode: 'insensitive' } },
-          { title: { contains: params.search, mode: 'insensitive' } },
-          { description: { contains: params.search, mode: 'insensitive' } },
+          { ticketNumber: { contains: q, mode: 'insensitive' } },
+          { title: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { subCategory: { contains: q, mode: 'insensitive' } },
+          { subIssue: { contains: q, mode: 'insensitive' } },
+          { item: { contains: q, mode: 'insensitive' } },
+          {
+            raisedBy: {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { lastName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          },
+          {
+            assignedTo: {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { lastName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          },
+          {
+            department: {
+              name: { contains: q, mode: 'insensitive' },
+            },
+          },
         ],
       });
     }
