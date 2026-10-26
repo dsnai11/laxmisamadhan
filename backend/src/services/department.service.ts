@@ -598,7 +598,7 @@ class DepartmentService {
           ? {
               OR: [
                 ...(allTeamIds.length > 0 ? [{ teamId: { in: allTeamIds } }] : []),
-                ...(allMemberIds.length > 0 ? [{ assignedToId: { in: allMemberIds } }] : [])
+                ...(allMemberIds.length > 0 ? [{ teamId: null, assignedToId: { in: allMemberIds } }] : [])
               ]
             }
           : {})
@@ -607,7 +607,11 @@ class DepartmentService {
       if (params.status) where.status = params.status;
       if (params.assignedToId) {
         delete where.OR;
-        where.assignedToId = params.assignedToId;
+        if (params.assignedToId === 'unassigned') {
+          where.assignedToId = null;
+        } else {
+          where.assignedToId = params.assignedToId;
+        }
       }
       if (params.priority) where.priority = params.priority;
       if (params.search) {
@@ -675,13 +679,23 @@ class DepartmentService {
     const memberIds = team.members.map((m: any) => m.id);
 
     const where: any = memberIds.length > 0
-      ? { OR: [{ teamId: team.id }, { assignedToId: { in: memberIds } }] }
+      ? {
+          OR: [
+            { teamId: team.id },
+            { teamId: null, assignedToId: { in: memberIds } }
+          ]
+        }
       : { teamId: team.id };
 
     if (params.status) where.status = params.status;
     if (params.assignedToId) {
       delete where.OR;
-      where.assignedToId = params.assignedToId;
+      where.teamId = team.id;
+      if (params.assignedToId === 'unassigned') {
+        where.assignedToId = null;
+      } else {
+        where.assignedToId = params.assignedToId;
+      }
     }
     if (params.priority) where.priority = params.priority;
     if (params.search) {

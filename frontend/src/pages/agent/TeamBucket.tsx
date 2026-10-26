@@ -158,14 +158,39 @@ export default function TeamBucket() {
       </div>
 
       {/* Member stats strip */}
-      {members.length > 0 && (
+      {(members.length > 0 || tickets.some((t: any) => !t.assignedTo)) && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {/* Quick Unassigned Card */}
+          {tickets.some((t: any) => !t.assignedTo) && (
+            <button
+              type="button"
+              onClick={() => setFilterMember(filterMember === 'unassigned' ? '' : 'unassigned')}
+              className={cn(
+                'card p-3 text-left transition-all border-2',
+                filterMember === 'unassigned'
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40'
+                  : 'border-transparent hover:border-gray-200 dark:hover:border-slate-700'
+              )}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/60 flex items-center justify-center text-xs font-bold text-amber-700 dark:text-amber-300 shrink-0">
+                  ⚡
+                </div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">Unassigned</p>
+              </div>
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                {tickets.filter((t: any) => !t.assignedTo && t.status !== 'RESOLVED' && t.status !== 'CLOSED').length} open tickets
+              </p>
+            </button>
+          )}
+
           {members.map((m: any) => {
             const memberTickets = tickets.filter((t: any) => t.assignedTo?.id === m.id);
             const open = memberTickets.filter((t: any) => t.status !== 'RESOLVED' && t.status !== 'CLOSED').length;
             return (
               <button
                 key={m.id}
+                type="button"
                 onClick={() => setFilterMember(filterMember === m.id ? '' : m.id)}
                 className={cn(
                   'card p-3 text-left transition-all border-2',
