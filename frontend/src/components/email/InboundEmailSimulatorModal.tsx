@@ -32,7 +32,7 @@ export default function InboundEmailSimulatorModal({ open, onClose, departments 
   const [form, setForm] = useState({
     fromEmail: 'sourabh.sharma@lifc.in',
     fromName: 'Sourabh Sharma (Branch Head)',
-    toEmail: 'project.lifc.in',
+    toEmail: 'project@lifc.in',
     subject: 'Need system access for new branch project setup',
     body: 'Dear Team,\n\nPlease grant access for the new branch project setup under LIFC. Our team needs access to the support desk and project dashboards.\n\nThanks,\nSourabh Sharma',
   });
@@ -82,7 +82,7 @@ export default function InboundEmailSimulatorModal({ open, onClose, departments 
         </div>
 
         <p className="text-gray-600 dark:text-slate-300">
-          Emails sent to <strong>laxmisamadhan@lifc.in</strong>, <strong>it.support@lifc.in</strong>, or team emails are automatically converted into tickets. You can also test with the simulator below:
+          Emails sent to <strong>project@lifc.in</strong> (IT Application), <strong>laxmisamadhan@lifc.in</strong>, or <strong>itauditor@lifc.in</strong> are automatically converted into tickets. You can also test with the simulator below:
         </p>
 
         {result ? (
@@ -141,18 +141,17 @@ export default function InboundEmailSimulatorModal({ open, onClose, departments 
                   className="input input-sm flex-1 font-semibold text-blue-700"
                   value={form.toEmail}
                   onChange={(e) => setForm({ ...form, toEmail: e.target.value })}
-                  placeholder="project.lifc.in or support@lifc.in"
+                  placeholder="project@lifc.in or laxmisamadhan@lifc.in"
                 />
                 <select
-                  className="input input-sm w-44 bg-gray-50"
+                  className="input input-sm w-52 bg-gray-50"
                   onChange={(e) => e.target.value && setForm({ ...form, toEmail: e.target.value })}
                 >
                   <option value="">Quick Presets ▾</option>
-                  <option value="project.lifc.in">project.lifc.in (Project Team)</option>
+                  <option value="project@lifc.in">project@lifc.in (IT Application)</option>
+                  <option value="laxmisamadhan@lifc.in">laxmisamadhan@lifc.in (IT Helpdesk)</option>
+                  <option value="itauditor@lifc.in">itauditor@lifc.in (Security / AI)</option>
                   <option value="it.support@lifc.in">it.support@lifc.in (IT Desk)</option>
-                  <option value="hr.support@lifc.in">hr.support@lifc.in (HR Desk)</option>
-                  <option value="credit.support@lifc.in">credit.support@lifc.in (Credit Desk)</option>
-                  <option value="admin.support@lifc.in">admin.support@lifc.in (Admin Desk)</option>
                 </select>
               </div>
             </Field>

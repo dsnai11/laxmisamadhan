@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@services/api';
-import { formatDate, formatRelativeTime } from '@utils/helpers';
+import { formatDate, formatRelativeTime, humanize } from '@utils/helpers';
 import {
   PageHeader, PageLoader, ErrorState, EmptyState, StatusBadge, PriorityBadge, SLABadge,
   Pagination, STATUS_OPTIONS, PRIORITY_OPTIONS, CATEGORY_OPTIONS, Modal, Field,
@@ -473,7 +473,7 @@ export default function AdminAllTickets() {
               onChange={(e) => setBulkEditForm({ ...bulkEditForm, status: e.target.value })}
             >
               <option value="">-- Leave Unchanged --</option>
-              {STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+              {STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{humanize(opt)}</option>)}
             </select>
           </Field>
 

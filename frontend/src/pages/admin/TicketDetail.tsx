@@ -253,13 +253,45 @@ export default function AdminTicketDetail() {
           <MacroSelector ticketId={ticket.id} onApplied={() => refetch()} />
 
           {/* Admin Actions */}
-          <div className="card p-4 space-y-2">
-            <h3 className="font-semibold text-gray-900 text-sm mb-3">Admin Actions</h3>
+          <div className="card p-4 space-y-2.5">
+            <h3 className="font-semibold text-gray-900 text-sm mb-2">Admin Actions</h3>
             <button className="btn-primary btn-sm w-full" onClick={() => { setNewAssignee(ticket.assignedToId || ''); setNewTeam(ticket.teamId || ''); setAssignModal(true); }}>
               {ticket.assignedTo ? 'Reassign Ticket' : 'Assign Ticket'}
             </button>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+              {ticket.status !== 'DEPENDENCY_ON_CLIENT' && ticket.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  disabled={statusMutation.isPending}
+                  onClick={() => api.updateTicketStatus(ticket.id, 'DEPENDENCY_ON_CLIENT').then(() => { toast.success('Status updated to Dependency on User'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
+                  className="btn-secondary text-xs py-1.5 px-2 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                >
+                  ⏳ Dep. on User
+                </button>
+              )}
+              {ticket.status !== 'DEPENDENCY_ON_VENDOR' && ticket.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  disabled={statusMutation.isPending}
+                  onClick={() => api.updateTicketStatus(ticket.id, 'DEPENDENCY_ON_VENDOR').then(() => { toast.success('Status updated to Dependency on Vendor'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
+                  className="btn-secondary text-xs py-1.5 px-2 bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                >
+                  🏢 Dep. on Vendor
+                </button>
+              )}
+              {ticket.status !== 'OPEN' && ticket.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  disabled={statusMutation.isPending}
+                  onClick={() => api.updateTicketStatus(ticket.id, 'OPEN').then(() => { toast.success('Status updated to Open'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
+                  className="btn-secondary text-xs py-1.5 px-2 bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                >
+                  🔄 Back to Open
+                </button>
+              )}
+            </div>
             <button className="btn-secondary btn-sm w-full" onClick={() => { setNewStatus(ticket.status); setResolution(''); setStatusModal(true); }}>
-              Change Status
+              Change Status...
             </button>
           </div>
 
@@ -367,7 +399,7 @@ export default function AdminTicketDetail() {
           <div>
             <label className="label">New Status</label>
             <select className="input w-full" value={newStatus} onChange={e => setNewStatus(e.target.value)}>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{humanize(s)}</option>)}
             </select>
           </div>
           {needsResolution && (

@@ -4,11 +4,11 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@context/AuthContext';
 import api from '@services/api';
-import { formatRelativeTime, cn } from '@utils/helpers';
+import { formatRelativeTime, cn, humanize } from '@utils/helpers';
 import { PageHeader, PageLoader, ErrorState, EmptyState, StatusBadge, PriorityBadge, SLABadge } from '@components/common/ui';
 
 
-const STATUS_OPTIONS = ['', 'OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED', 'REOPENED'];
+const STATUS_OPTIONS = ['', 'OPEN', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'RESOLVED', 'REOPENED'];
 const PRIORITY_OPTIONS = ['', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL', 'URGENT'];
 
 export default function TeamBucket() {
@@ -173,7 +173,7 @@ export default function TeamBucket() {
       {/* Filters */}
       <div className="card p-4 flex flex-wrap gap-3">
         <select className="input input-sm w-36" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
-          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || 'All Statuses'}</option>)}
+          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s ? humanize(s) : 'All Statuses'}</option>)}
         </select>
         <select className="input input-sm w-36" value={priority} onChange={e => { setPriority(e.target.value); setPage(1); }}>
           {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p || 'All Priorities'}</option>)}

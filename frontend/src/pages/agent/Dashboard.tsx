@@ -225,7 +225,7 @@ export default function AgentDashboard() {
         <Link to="/agent/my-assignments?status=DEPENDENCY_ON_CLIENT" className="card p-5 sm:p-6 hover:shadow-card-hover transition-shadow group">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Waiting on Client</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Waiting on User</p>
               <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-amber-600 dark:text-amber-400">{dependencyCount}</p>
               <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Pending user response</span>
             </div>

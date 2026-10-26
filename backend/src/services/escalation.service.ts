@@ -20,7 +20,7 @@ class EscalationService {
   async runEscalationCheck(): Promise<EscalationResult> {
     const activeTickets = await prisma.ticket.findMany({
       where: {
-        status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] },
+        status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] },
       },
       include: {
         department: { include: { head: true, teams: { include: { lead: true } } } },

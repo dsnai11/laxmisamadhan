@@ -359,7 +359,7 @@ class TicketService {
     }
 
     const updatedTicket = await prisma.ticket.update({
-      where: { id },
+      where: { id: ticket.id },
       data: {
         ...updates,
         updates: {
@@ -473,7 +473,7 @@ class TicketService {
     }
 
     const updatedTicket = await prisma.ticket.update({
-      where: { id },
+      where: { id: ticket.id },
       data: {
         assignedToId,
         assignedById,
@@ -597,7 +597,7 @@ class TicketService {
     }
 
     const updatedTicket = await prisma.ticket.update({
-      where: { id },
+      where: { id: ticket.id },
       data: updateData,
       include: {
         raisedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -607,7 +607,7 @@ class TicketService {
       },
     });
 
-    await logActivity(userId, 'STATUS_CHANGED', `Status changed from ${ticket.status} to ${status}`, id, { 
+    await logActivity(userId, 'STATUS_CHANGED', `Status changed from ${ticket.status} to ${status}`, ticket.id, { 
       oldStatus: ticket.status, 
       newStatus: status,
       resolution,
@@ -908,6 +908,7 @@ class TicketService {
       resolvedCount: statusMap[TicketStatus.RESOLVED] || 0,
       reopenedCount: statusMap[TicketStatus.REOPENED] || 0,
       dependencyCount: statusMap[TicketStatus.DEPENDENCY_ON_CLIENT] || 0,
+      dependencyVendorCount: statusMap[TicketStatus.DEPENDENCY_ON_VENDOR] || 0,
       resolvedTodayCount,
     };
   }
@@ -1041,12 +1042,13 @@ class TicketService {
 
   private getValidStatusTransitions(currentStatus: TicketStatus): TicketStatus[] {
     const transitions: Record<TicketStatus, TicketStatus[]> = {
-      [TicketStatus.OPEN]: [TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
-      [TicketStatus.DEPENDENCY_ON_CLIENT]: [TicketStatus.OPEN, TicketStatus.RESOLVED],
+      [TicketStatus.OPEN]: [TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED],
+      [TicketStatus.DEPENDENCY_ON_CLIENT]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED],
+      [TicketStatus.DEPENDENCY_ON_VENDOR]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
       [TicketStatus.RESOLVED]: [TicketStatus.REOPENED],
-      [TicketStatus.REOPENED]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
+      [TicketStatus.REOPENED]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED],
     };
-    return transitions[currentStatus] || [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED, TicketStatus.REOPENED];
+    return transitions[currentStatus] || [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED, TicketStatus.REOPENED];
   }
 
   private async generateTicketNumber(departmentId: string): Promise<string> {
@@ -1406,7 +1408,7 @@ class TicketService {
               members.map(async (m: any) => ({
                 agent: m,
                 count: await prisma.ticket.count({
-                  where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
+                  where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] } },
                 }),
               }))
             );
@@ -1442,7 +1444,7 @@ class TicketService {
             ],
           },
         },
-        _count: { select: { tickets: { where: { status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] } } } } },
+        _count: { select: { tickets: { where: { status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] } } } } },
       },
     });
 
@@ -1468,7 +1470,7 @@ class TicketService {
             members.map(async (m: any) => ({
               agent: m,
               count: await prisma.ticket.count({
-                where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
+                where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] } },
               }),
             }))
           );
@@ -1504,7 +1506,7 @@ class TicketService {
             agents.map(async (a: any) => ({
               agent: a,
               count: await prisma.ticket.count({
-                where: { assignedToId: a.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
+                where: { assignedToId: a.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] } },
               }),
             }))
           );

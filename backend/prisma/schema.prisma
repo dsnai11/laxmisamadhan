@@ -29,6 +29,7 @@ enum TicketStatus {
   RESOLVED
   REOPENED
   DEPENDENCY_ON_CLIENT
+  DEPENDENCY_ON_VENDOR
 }
 
 enum TicketPriority {

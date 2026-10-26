@@ -141,7 +141,7 @@ class SLAService {
           { responseDueAt: { lte: addMinutes(now, 30), gt: now } },
           { resolutionDueAt: { lte: addMinutes(now, 60), gt: now } },
         ],
-        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] },
+        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] },
       },
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
@@ -157,7 +157,7 @@ class SLAService {
           { responseDueAt: { lt: now } },
           { resolutionDueAt: { lt: now } },
         ],
-        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] },
+        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] },
       },
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });

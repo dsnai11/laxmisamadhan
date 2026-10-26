@@ -126,6 +126,7 @@ export enum TicketStatus {
   RESOLVED = 'RESOLVED',
   REOPENED = 'REOPENED',
   DEPENDENCY_ON_CLIENT = 'DEPENDENCY_ON_CLIENT',
+  DEPENDENCY_ON_VENDOR = 'DEPENDENCY_ON_VENDOR',
 }
 
 export enum TicketPriority {

@@ -27,13 +27,14 @@ import {
 } from '@components/common/ui';
 
 const TRANSITIONS: Record<string, string[]> = {
-  OPEN: ['DEPENDENCY_ON_CLIENT', 'RESOLVED'],
-  DEPENDENCY_ON_CLIENT: ['OPEN', 'RESOLVED'],
+  OPEN: ['DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'RESOLVED'],
+  DEPENDENCY_ON_CLIENT: ['OPEN', 'DEPENDENCY_ON_VENDOR', 'RESOLVED'],
+  DEPENDENCY_ON_VENDOR: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'],
   RESOLVED: ['REOPENED'],
-  REOPENED: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'],
+  REOPENED: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'RESOLVED'],
 };
 
-const ACTIVE_STATUSES = ['OPEN', 'DEPENDENCY_ON_CLIENT', 'REOPENED'];
+const ACTIVE_STATUSES = ['OPEN', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'REOPENED'];
 
 function fullName(u?: { firstName?: string; lastName?: string } | null) {
   return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '';
@@ -490,6 +491,54 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
                   <p className="text-[11px] text-gray-500">
                     If raised in the wrong department, transfer to the right team. Current assignee will be unassigned and SLA updated.
                   </p>
+                </div>
+              )}
+
+              {canWork && isActive && (
+                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-slate-800">
+                  <label className="label mb-1">Quick Status Actions</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ticket.status !== 'DEPENDENCY_ON_CLIENT' && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('DEPENDENCY_ON_CLIENT')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        ⏳ Dep. on User
+                      </button>
+                    )}
+                    {ticket.status !== 'DEPENDENCY_ON_VENDOR' && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('DEPENDENCY_ON_VENDOR')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        🏢 Dep. on Vendor
+                      </button>
+                    )}
+                    {ticket.status !== 'OPEN' && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('OPEN')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        🔄 Back to Open
+                      </button>
+                    )}
+                    {canClose && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('RESOLVED')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-green-50 text-green-800 border-green-200 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        ✅ Resolve
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
