@@ -191,7 +191,7 @@ export function SLABadge({ status, isOverdue }: { status?: string; isOverdue?: b
   );
 }
 
-export function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {
+export function Field({ label, error, hint, required, children }: { label: string; error?: string; hint?: string; required?: boolean; children: ReactNode }) {
   return (
     <div>
       <label className="label">{label}</label>

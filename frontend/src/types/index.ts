@@ -161,6 +161,7 @@ export interface Team {
   id: string;
   name: string;
   description?: string;
+  supportEmail?: string;
   departmentId: string;
   department?: Department;
   leadId?: string;

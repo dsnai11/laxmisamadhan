@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@services/api';
-import { formatRelativeTime, cn } from '@utils/helpers';
+import { formatRelativeTime, cn, humanize } from '@utils/helpers';
 import { PageHeader, PageLoader, ErrorState, StatusBadge, PriorityBadge, SLABadge, Modal, STATUS_OPTIONS, PRIORITY_OPTIONS, getErrorMessage } from '@components/common/ui';
 import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';

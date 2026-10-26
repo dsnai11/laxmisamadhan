@@ -50,7 +50,7 @@ export default function TeamBucket() {
   );
 
   const myTeam = eligibleTeams.find((t: any) => t.id === (selectedTeamId || eligibleTeams[0]?.id)) || eligibleTeams[0];
-  const canReassign = isLeadership || userRoles.includes('TEAM_LEAD') || myTeam?.leadId === user?.id;
+  const canReassign = isLeadership || (userRoles as string[]).includes('TEAM_LEAD') || myTeam?.leadId === user?.id;
 
   const { data: bucketData, isLoading: bucketLoading, error: bucketError, refetch: refetchBucket } = useQuery({
     queryKey: ['team-bucket', departmentId, myTeam?.id, page, status, priority, filterMember],

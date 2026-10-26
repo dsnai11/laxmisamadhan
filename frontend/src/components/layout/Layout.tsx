@@ -145,10 +145,11 @@ export default function Layout() {
     // 3. Ticket Assignment
     unsubs.push(
       onAssignment((data) => {
+        const tktNum = (data as any).ticketNumber;
         showTrayNotification({
           title: 'Ticket Assigned',
-          message: data.ticketNumber
-            ? `Ticket #${data.ticketNumber} has been assigned to you`
+          message: tktNum
+            ? `Ticket #${tktNum} has been assigned to you`
             : 'You have been assigned a new ticket',
           ticketId: data.ticketId,
         });
