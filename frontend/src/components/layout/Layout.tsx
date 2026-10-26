@@ -269,9 +269,39 @@ export default function Layout() {
   };
 
   const openNotification = (n: Notification) => {
-    if (n.referenceType !== 'TICKET' || !n.referenceId) return;
-    const base = ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(role) ? '/admin/tickets/' : ['AGENT', 'TEAM_LEAD'].includes(role) ? '/agent/tickets/' : '/raiser/tickets/';
-    navigate(base + n.referenceId);
+    // 1. Resolve ticket target: referenceId, metadata.ticketId, metadata.ticketNumber, or regex match from title/message
+    const rawRef = n.referenceId;
+    const metaRef = (n as any).metadata?.ticketId || (n as any).metadata?.ticketNumber;
+    const match = `${n.title || ''} ${n.message || ''}`.match(/(?:TKT|INC|HW|SW|[A-Z]{2,5})-\d{2}-\d{4,6}/i)
+      || `${n.title || ''} ${n.message || ''}`.match(/(?:TKT|INC|HW|SW|[A-Z]{2,5})-\d+/i);
+    const regexRef = match ? match[0] : null;
+
+    const target = rawRef || metaRef || regexRef;
+    if (!target) return;
+
+    // 2. Resolve portal base based on user's active context and roles
+    const allRoles = Array.from(new Set([
+      ...(user?.role ? [user.role] : []),
+      ...(user?.roles || [])
+    ]));
+    const isAdmin = allRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
+    const isAgent = allRoles.some(r => ['AGENT', 'TEAM_LEAD'].includes(r));
+
+    let base = '/raiser/tickets/';
+    if (location.pathname.startsWith('/admin') && isAdmin) {
+      base = '/admin/tickets/';
+    } else if (location.pathname.startsWith('/agent') && isAgent) {
+      base = '/agent/tickets/';
+    } else if (location.pathname.startsWith('/raiser')) {
+      base = '/raiser/tickets/';
+    } else if (isAdmin) {
+      base = '/admin/tickets/';
+    } else if (isAgent) {
+      base = '/agent/tickets/';
+    }
+
+    setNotificationDropdownOpen(false);
+    navigate(base + target);
   };
 
   // Auto close mobile drawer on route changes
