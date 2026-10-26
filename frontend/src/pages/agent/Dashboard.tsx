@@ -64,8 +64,22 @@ export default function AgentDashboard() {
       }),
   });
 
-  const isLoading = statsLoading || assignedLoading || queueLoading;
+  // Fetch vendor dependency tickets
+  const { data: vendorTickets, isLoading: vendorLoading } = useQuery({
+    queryKey: ['agentVendorTickets'],
+    queryFn: () =>
+      api.getAssignedTickets({
+        page: 1,
+        limit: 10,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+        status: 'DEPENDENCY_ON_VENDOR',
+      }),
+  });
+
+  const isLoading = statsLoading || assignedLoading || queueLoading || vendorLoading;
   const tickets = assignedTickets?.data || [];
+  const vendorTicketList = vendorTickets?.data || [];
 
   // Accurate counts derived from backend database
   const openCount = statsData?.openCount ?? 0;
@@ -282,8 +296,8 @@ export default function AgentDashboard() {
         </Link>
       </div>
 
-      {/* My Assignments & Queue Side by Side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Assignments, Vendor Dependency & Queue */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* My Assignments */}
         <div className="card">
           <div className="p-5 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
@@ -314,6 +328,53 @@ export default function AgentDashboard() {
                     </p>
                     <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 truncate">
                       {ticket.department?.name} • {ticket.subIssue || ticket.subCategory || ticket.category} • Updated {formatRelativeTime(ticket.updatedAt)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <PriorityBadge priority={ticket.priority} />
+                    <StatusBadge status={ticket.status} />
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Dependency on Vendor */}
+        <div className="card">
+          <div className="p-5 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Dependency on Vendor</h3>
+                <span className="badge bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 text-xs px-2 py-0.5">
+                  {dependencyVendorCount}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Tickets awaiting third-party vendor action</p>
+            </div>
+            <Link to="/agent/my-assignments?status=DEPENDENCY_ON_VENDOR" className="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline">
+              View all →
+            </Link>
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-slate-800">
+            {vendorTicketList.length === 0 ? (
+              <div className="p-6 text-center text-gray-500 dark:text-slate-400 text-sm">No tickets pending vendor resolution.</div>
+            ) : (
+              vendorTicketList.slice(0, 10).map((ticket: any) => (
+                <Link
+                  key={ticket.id}
+                  to={`/agent/tickets/${ticket.id}`}
+                  className="p-4 hover:bg-gray-50 dark:hover:bg-slate-800/70 transition-colors flex items-center gap-3 group"
+                >
+                  <div className={cn('p-2 rounded-lg shrink-0', getStatusColor(ticket.status))}>
+                    <BuildingOfficeIcon className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                      {ticket.ticketNumber}: {ticket.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 truncate">
+                      {ticket.department?.name} • Updated {formatRelativeTime(ticket.updatedAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -373,7 +434,7 @@ export default function AgentDashboard() {
       {/* Quick Actions Strip */}
       <div className="card p-5">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">Quick Navigation</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Link to="/agent/queue" className="btn-secondary text-center py-3 flex flex-col items-center justify-center gap-1 rounded-xl">
             <UserGroupIcon className="h-5 w-5 text-primary-600 dark:text-primary-400" />
             <span className="text-xs font-medium">Department Queue</span>
@@ -382,9 +443,13 @@ export default function AgentDashboard() {
             <TicketIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             <span className="text-xs font-medium">My Assigned Tickets</span>
           </Link>
+          <Link to="/agent/my-assignments?status=DEPENDENCY_ON_VENDOR" className="btn-secondary text-center py-3 flex flex-col items-center justify-center gap-1 rounded-xl">
+            <BuildingOfficeIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <span className="text-xs font-medium">Vendor Dependency ({dependencyVendorCount})</span>
+          </Link>
           <Link to="/agent/my-assignments?status=RESOLVED" className="btn-secondary text-center py-3 flex flex-col items-center justify-center gap-1 rounded-xl">
             <CheckCircleIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
-            <span className="text-xs font-medium">My Resolved Tickets ({resolvedCount})</span>
+            <span className="text-xs font-medium">My Resolved ({resolvedCount})</span>
           </Link>
           <Link to="/agent/team-bucket" className="btn-secondary text-center py-3 flex flex-col items-center justify-center gap-1 rounded-xl">
             <ChartBarIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />

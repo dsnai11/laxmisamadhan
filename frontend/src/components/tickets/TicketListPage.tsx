@@ -69,6 +69,14 @@ export default function TicketListPage({
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  useEffect(() => {
+    const s = urlParams.get('status') || initialStatus;
+    if (STATUS_OPTIONS.includes(s) || s === '') {
+      setStatus(s);
+      setPage(1);
+    }
+  }, [urlParams, initialStatus]);
+
   const params = {
     page,
     limit: viewMode === 'kanban' ? 50 : 15,
