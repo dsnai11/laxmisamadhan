@@ -594,19 +594,11 @@ class DepartmentService {
 
       const where: any = {
         departmentId,
-        ...(allTeamIds.length > 0 || allMemberIds.length > 0
-          ? {
-              OR: [
-                ...(allTeamIds.length > 0 ? [{ teamId: { in: allTeamIds } }] : []),
-                ...(allMemberIds.length > 0 ? [{ teamId: null, assignedToId: { in: allMemberIds } }] : [])
-              ]
-            }
-          : {})
+        ...(allTeamIds.length > 0 ? { teamId: { in: allTeamIds } } : {})
       };
 
       if (params.status) where.status = params.status;
       if (params.assignedToId) {
-        delete where.OR;
         if (params.assignedToId === 'unassigned') {
           where.assignedToId = null;
         } else {
@@ -678,19 +670,12 @@ class DepartmentService {
 
     const memberIds = team.members.map((m: any) => m.id);
 
-    const where: any = memberIds.length > 0
-      ? {
-          OR: [
-            { teamId: team.id },
-            { teamId: null, assignedToId: { in: memberIds } }
-          ]
-        }
-      : { teamId: team.id };
+    const where: any = {
+      teamId: team.id,
+    };
 
     if (params.status) where.status = params.status;
     if (params.assignedToId) {
-      delete where.OR;
-      where.teamId = team.id;
       if (params.assignedToId === 'unassigned') {
         where.assignedToId = null;
       } else {

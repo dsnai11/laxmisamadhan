@@ -314,7 +314,7 @@ export default function TeamBucket() {
                     </td>
                     <td>
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                        {ticket.team?.name || 'General'}
+                        {ticket.team?.name || 'Unassigned'}
                       </span>
                     </td>
                     <td>
