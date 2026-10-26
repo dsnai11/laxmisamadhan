@@ -29,6 +29,8 @@ export default function TeamBucket() {
   ]));
   const isLeadership = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
 
+  const canAccessTeamBucket = (userRoles as string[]).includes('SUPER_ADMIN') || Boolean(user?.canViewTeamBucket);
+
   // If leadership, fetch departments list for department switching
   const { data: allDepts } = useQuery({
     queryKey: ['all-departments-bucket'],
@@ -42,18 +44,10 @@ export default function TeamBucket() {
   const { data: allTeams, isLoading: teamsLoading, error: teamsError, refetch: refetchTeams } = useQuery({
     queryKey: ['my-dept-teams', departmentId],
     queryFn: () => api.getMyTeam(departmentId),
-    enabled: !!departmentId,
+    enabled: canAccessTeamBucket && !!departmentId,
   });
 
-  const eligibleTeams = (allTeams || []).filter((t: any) =>
-    isLeadership ||
-    Boolean(user?.canViewTeamBucket) ||
-    (userRoles as string[]).includes('TEAM_LEAD') ||
-    t.leadId === user?.id ||
-    (t.members || []).some((m: any) => m.id === user?.id)
-  );
-
-  const displayTeams: any[] = eligibleTeams.length > 0 ? eligibleTeams : (allTeams || []);
+  const displayTeams: any[] = allTeams || [];
 
   // Determine current active team selection
   const currentTeamId = selectedTeamId || (displayTeams.length > 0 ? displayTeams[0]?.id : 'all');
@@ -74,7 +68,7 @@ export default function TeamBucket() {
         assignedToId: filterMember || undefined,
         search: search.trim() || undefined,
       }),
-    enabled: !!departmentId && !!currentTeamId,
+    enabled: canAccessTeamBucket && !!departmentId && !!currentTeamId,
   });
 
   const reassignMutation = useMutation({
@@ -88,6 +82,18 @@ export default function TeamBucket() {
     },
     onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to reassign ticket'),
   });
+
+  if (!canAccessTeamBucket) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Team Bucket" subtitle="Access Restricted" />
+        <EmptyState
+          title="Access Restricted"
+          message="Team bucket feature is restricted. Only users granted access by a Super Admin from the GUI can view team bucket."
+        />
+      </div>
+    );
+  }
 
   if (teamsLoading || bucketLoading) return <PageLoader />;
   if (teamsError) return <ErrorState error={teamsError} onRetry={() => refetchTeams()} />;

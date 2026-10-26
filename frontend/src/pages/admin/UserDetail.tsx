@@ -302,19 +302,26 @@ export default function AdminUserDetail() {
           </Field>
         </div>
         <div className="md:col-span-2">
-          <Field label="Special Privileges / Permissions" hint="Control granular feature access for this user without changing their primary role.">
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/40 hover:bg-gray-100/60 transition-colors cursor-pointer">
+          <Field label="Special Privileges / Permissions" hint={isSuperAdmin ? "Grant or revoke Team Bucket access for this user." : "Only a Super Admin can grant or revoke Team Bucket access."}>
+            <label className={`flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/40 transition-colors ${editable && isSuperAdmin ? 'hover:bg-gray-100/60 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
               <input
                 type="checkbox"
-                disabled={!editable}
+                disabled={!editable || !isSuperAdmin}
                 checked={form.canViewTeamBucket}
                 onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
                 className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
               />
               <div>
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">Team Bucket Access</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  Team Bucket Access
+                  {form.canViewTeamBucket ? (
+                    <span className="badge badge-success text-[10px] py-0 px-1.5">Granted</span>
+                  ) : (
+                    <span className="badge badge-gray text-[10px] py-0 px-1.5">Restricted</span>
+                  )}
+                </span>
                 <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Allow this agent to access the Team Bucket and view tickets assigned to their team queue.
+                  Allow this user to access the Team Bucket and view tickets assigned to their team queue.
                 </p>
               </div>
             </label>

@@ -61,8 +61,8 @@ function getNavigation(userRoles: string[], canViewTeamBucket?: boolean) {
   const list = isAdmin ? navigation : isAgent ? agentNavigation : raiserNavigation;
   return list.filter((item) => {
     if (item.href === '/agent/team-bucket') {
-      const isLeadOrAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r));
-      return isLeadOrAdmin || Boolean(canViewTeamBucket);
+      const isSuperAdmin = userRoles.includes('SUPER_ADMIN');
+      return isSuperAdmin || Boolean(canViewTeamBucket);
     }
     return item.roles.some(r => userRoles.includes(r));
   });

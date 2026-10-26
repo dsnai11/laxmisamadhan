@@ -88,6 +88,7 @@ export default function MobileBottomNav({ onOpenMore }: MobileBottomNavProps) {
       },
     ];
   } else if (isAgent) {
+    const canSeeBucket = userRoles.includes('SUPER_ADMIN') || Boolean(user?.canViewTeamBucket);
     tabs = [
       {
         name: 'Home',
@@ -108,11 +109,11 @@ export default function MobileBottomNav({ onOpenMore }: MobileBottomNavProps) {
         name: 'Raise',
       },
       {
-        name: (isAdmin || userRoles.includes('TEAM_LEAD') || Boolean(user?.canViewTeamBucket)) ? 'Team' : 'My Work',
-        href: (isAdmin || userRoles.includes('TEAM_LEAD') || Boolean(user?.canViewTeamBucket)) ? '/agent/team-bucket' : '/agent/my-assignments',
+        name: canSeeBucket ? 'Team' : 'My Work',
+        href: canSeeBucket ? '/agent/team-bucket' : '/agent/my-assignments',
         icon: UserGroupIcon,
         iconActive: UserGroupIconSolid,
-        isActive: (isAdmin || userRoles.includes('TEAM_LEAD') || Boolean(user?.canViewTeamBucket))
+        isActive: canSeeBucket
           ? location.pathname.startsWith('/agent/team-bucket')
           : location.pathname.startsWith('/agent/my-assignments'),
       },

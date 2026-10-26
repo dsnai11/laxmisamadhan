@@ -300,7 +300,6 @@ class UserService {
           roles: true,
           status: true,
           departmentId: true,
-        canViewTeamBucket: true,
           canViewTeamBucket: true,
           managerId: true,
           avatar: true,
@@ -730,6 +729,7 @@ class UserService {
     if (params.status) where.status = params.status;
     if (params.departmentId) where.departmentId = params.departmentId;
     if (params.managerId) where.managerId = params.managerId;
+    if (params.canViewTeamBucket !== undefined) where.canViewTeamBucket = params.canViewTeamBucket;
 
     if (params.search) {
       where.OR = [

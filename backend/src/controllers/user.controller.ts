@@ -63,6 +63,9 @@ export const getUsers = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     status: req.query.status as UserStatus,
     departmentId: isOrgWide(actorOf(req)) ? (req.query.departmentId as string) : (req.user!.departmentId || 'none'),
     managerId: req.query.managerId as string,
+    canViewTeamBucket: req.query.canViewTeamBucket !== undefined
+      ? req.query.canViewTeamBucket === 'true' || req.query.canViewTeamBucket === true
+      : undefined,
     dateFrom: req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined,
     dateTo: req.query.dateTo ? new Date(req.query.dateTo as string) : undefined,
   };
@@ -92,6 +95,12 @@ export const updateUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
   if (req.body.roles) assertCanAssignRole(actor, req.body.roles);
   if (!isOrgWide(actor) && req.body.departmentId !== undefined && req.body.departmentId !== actor.departmentId) {
     throw new AppError('You can only keep users in your own department', 403, 'FORBIDDEN');
+  }
+  if (req.body.canViewTeamBucket !== undefined) {
+    const isSuperAdmin = actor.role === 'SUPER_ADMIN' || (actor.roles && actor.roles.includes('SUPER_ADMIN'));
+    if (!isSuperAdmin) {
+      throw new AppError('Only Super Admin can grant or revoke Team Bucket access', 403, 'FORBIDDEN');
+    }
   }
   const user = await userService.updateUser(req.params.id, req.body, req.user!.userId);
 

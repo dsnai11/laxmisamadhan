@@ -574,14 +574,11 @@ class DepartmentService {
       });
       if (!department) throw new Error('Department not found');
 
-      const isMemberOfAnyTeam = department.teams.some(t =>
-        t.leadId === requestingUserId || t.members.some(m => m.id === requestingUserId)
-      );
-      const isDeptMemberWithBucketAccess = Boolean(requestingUserCanViewBucket) && (!requestingUserDepartmentId || requestingUserDepartmentId === departmentId);
-      const hasBucketPermission = isLeadership || isTeamLead || isMemberOfAnyTeam || isDeptMemberWithBucketAccess;
+      const isSuperAdmin = effectiveRoles.includes('SUPER_ADMIN');
+      const hasBucketPermission = isSuperAdmin || Boolean(requestingUserCanViewBucket);
 
       if (!hasBucketPermission) {
-        throw new Error('Access denied: you do not have permission to view this department team bucket');
+        throw new Error('Access denied: Team bucket access must be granted by a Super Admin');
       }
 
       const allMembersMap = new Map<string, any>();
@@ -659,13 +656,11 @@ class DepartmentService {
     });
     if (!team) throw new Error('Team not found');
 
-    const isLeadOfTeam = team.leadId === requestingUserId || isTeamLead;
-    const isMemberOfTeam = team.members.some((m: any) => m.id === requestingUserId);
-    const isDeptMemberWithBucketAccess = Boolean(requestingUserCanViewBucket) && (!requestingUserDepartmentId || requestingUserDepartmentId === team.departmentId);
-    const hasBucketPermission = isLeadership || isLeadOfTeam || isMemberOfTeam || isDeptMemberWithBucketAccess;
+    const isSuperAdmin = effectiveRoles.includes('SUPER_ADMIN');
+    const hasBucketPermission = isSuperAdmin || Boolean(requestingUserCanViewBucket);
 
     if (!hasBucketPermission) {
-      throw new Error('Access denied: you do not have permission to view this team bucket');
+      throw new Error('Access denied: Team bucket access must be granted by a Super Admin');
     }
 
     const memberIds = team.members.map((m: any) => m.id);

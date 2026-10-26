@@ -35,16 +35,16 @@ const requireTeamBucketAccess = (req: any, res: any, next: any) => {
     return res.status(401).json({ success: false, error: 'Authentication required', code: 'UNAUTHORIZED' });
   }
   const userRoles = req.user.roles && req.user.roles.length > 0 ? req.user.roles : [req.user.role];
-  const isLeadershipOrLead = userRoles.some((r: string) => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r));
+  const isSuperAdmin = userRoles.includes('SUPER_ADMIN');
   const hasBucketFlag = Boolean(req.user.canViewTeamBucket);
 
-  if (isLeadershipOrLead || hasBucketFlag) {
+  if (isSuperAdmin || hasBucketFlag) {
     return next();
   }
 
   return res.status(403).json({
     success: false,
-    error: 'Insufficient permissions: You do not have permission to access the team bucket',
+    error: 'Insufficient permissions: Team bucket access must be granted by a Super Admin from the GUI',
     code: 'FORBIDDEN',
   });
 };

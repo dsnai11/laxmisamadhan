@@ -15,11 +15,13 @@ import {
   ArrowRightIcon,
 } from '@heroicons/react/24/outline';
 import api from '@services/api';
+import { useAuth } from '@context/AuthContext';
 import { formatRelativeTime, getStatusColor, getPriorityColor, cn } from '@utils/helpers';
 import { PriorityBadge, StatusBadge } from '@components/common/ui';
 
 export default function AgentDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Search state
   const [searchInput, setSearchInput] = useState('');
@@ -451,10 +453,12 @@ export default function AgentDashboard() {
             <CheckCircleIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
             <span className="text-xs font-medium">My Resolved ({resolvedCount})</span>
           </Link>
-          <Link to="/agent/team-bucket" className="btn-secondary text-center py-3 flex flex-col items-center justify-center gap-1 rounded-xl">
-            <ChartBarIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-            <span className="text-xs font-medium">Team Bucket</span>
-          </Link>
+          {(user?.role === 'SUPER_ADMIN' || Boolean(user?.canViewTeamBucket)) && (
+            <Link to="/agent/team-bucket" className="btn-secondary text-center py-3 flex flex-col items-center justify-center gap-1 rounded-xl">
+              <ChartBarIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <span className="text-xs font-medium">Team Bucket</span>
+            </Link>
+          )}
         </div>
       </div>
     </div>

@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { formatRelativeTime, humanize } from '@utils/helpers';
+import { formatRelativeTime, humanize, cn } from '@utils/helpers';
 import {
   assignableRoles,
   Avatar,
@@ -62,6 +62,8 @@ export default function AdminUsers() {
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [teamBucketFilter, setTeamBucketFilter] = useState('');
+  const [togglingBucketId, setTogglingBucketId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -88,13 +90,40 @@ export default function AdminUsers() {
   }, [searchInput]);
 
   const { data: departments } = useQuery({ queryKey: ['departments'], queryFn: () => api.getDepartments() });
-  const params = { page, limit: 15, ...(search && { search }), ...(role && { role }), ...(status && { status }), ...(departmentId && { departmentId }) };
+  const params = {
+    page,
+    limit: 15,
+    ...(search && { search }),
+    ...(role && { role }),
+    ...(status && { status }),
+    ...(departmentId && { departmentId }),
+    ...(teamBucketFilter ? { canViewTeamBucket: teamBucketFilter === 'granted' } : {})
+  };
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-users', params],
     queryFn: () => api.getUsers(params),
     placeholderData: keepPreviousData,
   });
   const users: any[] = data?.data || [];
+
+  const toggleTeamBucket = async (targetUser: any) => {
+    if (!isSuperAdmin || togglingBucketId) return;
+    setTogglingBucketId(targetUser.id);
+    const nextVal = !targetUser.canViewTeamBucket;
+    try {
+      await api.updateUser(targetUser.id, { canViewTeamBucket: nextVal });
+      toast.success(
+        nextVal
+          ? `Team Bucket access granted to ${targetUser.firstName} ${targetUser.lastName}`
+          : `Team Bucket access revoked for ${targetUser.firstName} ${targetUser.lastName}`
+      );
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to update Team Bucket access');
+    } finally {
+      setTogglingBucketId(null);
+    }
+  };
 
   const openCreate = () => {
     const initialRole = roles.includes('RAISER') ? 'RAISER' : roles[0] || 'RAISER';
@@ -438,7 +467,7 @@ export default function AdminUsers() {
       />
 
       <div className="card">
-        <div className="p-4 border-b border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="p-4 border-b border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-3">
           <input className="input" placeholder="Search name, email, or employee ID..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Search users" />
           <select className="input" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} aria-label="Filter by role">
             <option value="">All roles</option>
@@ -454,6 +483,11 @@ export default function AdminUsers() {
               {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           )}
+          <select className="input font-medium" value={teamBucketFilter} onChange={(e) => { setTeamBucketFilter(e.target.value); setPage(1); }} aria-label="Filter by Team Bucket access">
+            <option value="">All Team Bucket Access</option>
+            <option value="granted">⚡ Team Bucket: Granted</option>
+            <option value="restricted">🔒 Team Bucket: Restricted</option>
+          </select>
         </div>
 
         {isLoading ? <PageLoader /> : error ? <div className="p-4"><ErrorState error={error} onRetry={() => refetch()} /></div> : users.length === 0 ? (
@@ -467,6 +501,7 @@ export default function AdminUsers() {
                     <th>User</th>
                     <th>Role</th>
                     <th>Department</th>
+                    <th>Team Bucket Access</th>
                     <th>Status</th>
                     <th>Last login</th>
                     <th className="text-right">Actions</th>
@@ -504,20 +539,56 @@ export default function AdminUsers() {
                               {humanize(r)}
                             </span>
                           ))}
-                          {u.canViewTeamBucket && (
-                            <span
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                              title="User has explicit Team Bucket Access"
-                            >
-                              Team Bucket
-                            </span>
-                          )}
                         </div>
                       </td>
                       <td className="text-sm text-gray-600 dark:text-slate-300">
                         <div>{u.department?.name || '-'}</div>
                         {u.departmentRaiserName && (
                           <div className="text-[11px] text-gray-400 dark:text-slate-500">Raiser: {u.departmentRaiserName}</div>
+                        )}
+                      </td>
+                      {/* Team Bucket Access Toggle Column */}
+                      <td>
+                        {u.role === 'SUPER_ADMIN' || (u.roles && u.roles.includes('SUPER_ADMIN')) ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            Super Admin (Always On)
+                          </span>
+                        ) : isSuperAdmin ? (
+                          <button
+                            type="button"
+                            disabled={togglingBucketId === u.id}
+                            onClick={() => toggleTeamBucket(u)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all border shadow-xs cursor-pointer',
+                              u.canViewTeamBucket
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700 hover:border-gray-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                            )}
+                            title={u.canViewTeamBucket ? 'Click to revoke Team Bucket access' : 'Click to grant Team Bucket access'}
+                          >
+                            {togglingBucketId === u.id ? (
+                              <span className="inline-block animate-spin">⏳</span>
+                            ) : u.canViewTeamBucket ? (
+                              <>
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                <span>Granted (Click to Revoke)</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
+                                <span>Restricted (Click to Grant)</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
+                            u.canViewTeamBucket
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              : 'bg-gray-50 text-gray-400 border-gray-200 dark:bg-slate-800 dark:text-slate-500'
+                          )}>
+                            {u.canViewTeamBucket ? 'Granted' : 'Restricted'}
+                          </span>
                         )}
                       </td>
                       <td><span className={`badge ${statusBadge[u.status] || 'badge-gray'}`}>{humanize(u.status)}</span></td>
@@ -613,20 +684,22 @@ export default function AdminUsers() {
               {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
-          <div className="md:col-span-2">
-            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/40 hover:bg-gray-100/50 transition-colors cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.canViewTeamBucket}
-                onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
-              />
-              <div>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Grant Team Bucket Access</span>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Allow this user to access the team queue and view team tickets</p>
-              </div>
-            </label>
-          </div>
+          {isSuperAdmin && (
+            <div className="md:col-span-2">
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/40 hover:bg-gray-100/50 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.canViewTeamBucket}
+                  onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">Grant Team Bucket Access</span>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Allow this user to access the team queue and view team tickets</p>
+                </div>
+              </label>
+            </div>
+          )}
           <div className="md:col-span-2">
             <Field label="Temporary password" hint="At least 8 characters. Share it with the user securely; they can change it after signing in.">
               <input type="text" className="input" autoComplete="off" value={form.temporaryPassword} onChange={(e) => setForm({ ...form, temporaryPassword: e.target.value })} />
