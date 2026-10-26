@@ -195,15 +195,17 @@ export const deleteTeam = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 export const getTeamBucket = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { page, limit, status, assignedToId, priority } = req.query as any;
+  const { page, limit, status, assignedToId, priority, search } = req.query as any;
 
   const result = await departmentService.getTeamBucket(
+    req.params.id,
     req.params.teamId,
-    { page: page ? parseInt(page) : 1, limit: limit ? parseInt(limit) : 20, status, assignedToId, priority },
+    { page: page ? parseInt(page) : 1, limit: limit ? parseInt(limit) : 20, status, assignedToId, priority, search },
     req.user!.userId,
     req.user!.role,
     req.user!.roles,
     Boolean(req.user!.canViewTeamBucket),
+    req.user!.departmentId,
   );
 
   res.json({
