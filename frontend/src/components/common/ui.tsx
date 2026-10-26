@@ -194,7 +194,10 @@ export function SLABadge({ status, isOverdue }: { status?: string; isOverdue?: b
 export function Field({ label, error, hint, required, children }: { label: string; error?: string; hint?: string; required?: boolean; children: ReactNode }) {
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label flex items-center gap-1">
+        <span>{label}</span>
+        {required && <span className="text-danger-500 font-bold" title="Required">*</span>}
+      </label>
       {children}
       {hint && !error && <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{hint}</p>}
       {error && <p className="mt-1 text-sm text-danger-600 dark:text-danger-400">{error}</p>}

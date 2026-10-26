@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -19,12 +19,12 @@ import {
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 const schema = z.object({
-  departmentId: z.string().min(1, 'Please select a department'),
-  category: z.string().min(1, 'Please select a category'),
-  subCategory: z.string().optional(),
-  subIssue: z.string().optional(),
+  departmentId: z.string().trim().min(1, 'Please select a department'),
+  category: z.string().trim().min(1, 'Please select a category'),
+  subCategory: z.string().trim().min(1, 'Please select a System / Module (Sub Category)'),
+  subIssue: z.string().trim().min(1, 'Please select or enter a Sub-Issue (Specific Problem)'),
   title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200, 'Title is too long'),
-  description: z.string().trim().min(5, 'Please enter a description').max(10000),
+  description: z.string().trim().min(5, 'Please enter a description (at least 5 characters)').max(10000),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -41,6 +41,7 @@ export default function CreateTicket() {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -51,6 +52,15 @@ export default function CreateTicket() {
   const watchedCategory = watch('category');
   const watchedSubCategory = watch('subCategory');
   const watchedSubIssue = watch('subIssue');
+
+  useEffect(() => {
+    setValue('subCategory', '');
+    setValue('subIssue', '');
+  }, [watchedDept, watchedCategory, setValue]);
+
+  useEffect(() => {
+    setValue('subIssue', '');
+  }, [watchedSubCategory, setValue]);
 
   const { data: deptCategoryConfigs } = useQuery<any[]>({
     queryKey: ['category-configs', watchedDept],
@@ -161,7 +171,7 @@ export default function CreateTicket() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="card p-4 sm:p-6 space-y-4 sm:space-y-5" noValidate>
         {/* 1. Department */}
-        <Field label="Department" error={errors.departmentId?.message}>
+        <Field label="Department" required error={errors.departmentId?.message}>
           <select className="input" {...register('departmentId')}>
             <option value="">Select Department...</option>
             {(departments || []).map((d) => (
@@ -174,7 +184,7 @@ export default function CreateTicket() {
 
         {/* 2. Category & Sub Category / System (LOS, LMS, CRM, CLU-collection...) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="*Category" error={errors.category?.message}>
+          <Field label="Category" required error={errors.category?.message}>
             <select className="input" {...register('category')}>
               <option value="">Select Category...</option>
               {activeConfigs.length > 0 ? (
@@ -201,6 +211,8 @@ export default function CreateTicket() {
 
           <Field
             label="System / Module (Sub Category)"
+            required
+            error={errors.subCategory?.message}
             hint={assignedTeam ? `Assigned to: ${assignedTeam.name}` : undefined}
           >
             <select className="input" {...register('subCategory')}>
@@ -218,30 +230,40 @@ export default function CreateTicket() {
           </Field>
         </div>
 
-        {/* Sub-Issue (Specific Problem) - dependent on selected Sub Category */}
-        {watchedSubCategory && (
-          <Field
-            label="Sub-Issue (Specific Problem)"
-            hint={dynamicSubIssues.length > 0 ? `Specific issue related to "${watchedSubCategory}"` : `Specific issue under "${watchedSubCategory}"`}
-          >
-            {dynamicSubIssues.length > 0 ? (
-              <select className="input" {...register('subIssue')}>
-                <option value="">Select Sub-Issue...</option>
-                {dynamicSubIssues.map((si) => (
-                  <option key={si} value={si}>
-                    {si}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="input"
-                placeholder={`Enter specific issue under "${watchedSubCategory}"...`}
-                {...register('subIssue')}
-              />
-            )}
-          </Field>
-        )}
+        {/* Sub-Issue (Specific Problem) */}
+        <Field
+          label="Sub-Issue (Specific Problem)"
+          required
+          error={errors.subIssue?.message}
+          hint={
+            !watchedSubCategory
+              ? 'Please select a System / Module above first.'
+              : dynamicSubIssues.length > 0
+              ? `Select specific problem related to "${watchedSubCategory}"`
+              : `Enter specific problem under "${watchedSubCategory}"`
+          }
+        >
+          {!watchedSubCategory ? (
+            <select className="input cursor-not-allowed opacity-60" disabled>
+              <option value="">— Select a System / Module above first —</option>
+            </select>
+          ) : dynamicSubIssues.length > 0 ? (
+            <select className="input" {...register('subIssue')}>
+              <option value="">Select Sub-Issue / Specific Problem...</option>
+              {dynamicSubIssues.map((si) => (
+                <option key={si} value={si}>
+                  {si}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className="input"
+              placeholder={`Enter specific issue under "${watchedSubCategory}"...`}
+              {...register('subIssue')}
+            />
+          )}
+        </Field>
 
         {/* Dynamic SLA Guarantee Banner */}
         {matchingSLA && (
@@ -268,12 +290,12 @@ export default function CreateTicket() {
         )}
 
         {/* 3. Title / Subject */}
-        <Field label="Title / Subject" error={errors.title?.message}>
+        <Field label="Title / Subject" required error={errors.title?.message}>
           <input className="input" placeholder="e.g. Issue in LOS login or AFC4719 - MOUSE ISSUE" {...register('title')} />
         </Field>
 
         {/* 4. Description */}
-        <Field label="Description" error={errors.description?.message} hint="What happened, what you expected, and any error messages you saw.">
+        <Field label="Description" required error={errors.description?.message} hint="What happened, what you expected, and any error messages you saw.">
           <textarea className="input min-h-[140px]" placeholder="Enter ticket description..." {...register('description')} />
         </Field>
 

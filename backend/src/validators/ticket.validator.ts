@@ -6,11 +6,11 @@ export const ticketIdParamSchema = z.object({
 });
 
 export const createTicketSchema = z.object({
-  title: z.string().min(3, 'Title must be at least 3 characters').max(200),
-  description: z.string().min(5, 'Description must be at least 5 characters').max(10000),
+  title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200),
+  description: z.string().trim().min(5, 'Description must be at least 5 characters').max(10000),
   category: z.nativeEnum(TicketCategory),
-  subCategory: z.string().optional(),
-  subIssue: z.string().optional(),
+  subCategory: z.string().trim().min(1, 'Sub-category is required'),
+  subIssue: z.string().trim().min(1, 'Sub-issue is required'),
   item: z.string().optional(),
   group: z.string().optional(),
   site: z.string().optional(),
