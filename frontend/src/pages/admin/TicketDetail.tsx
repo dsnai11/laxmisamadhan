@@ -46,13 +46,13 @@ export default function AdminTicketDetail() {
   });
 
   const commentMutation = useMutation({
-    mutationFn: () => api.addComment(id!, comment, isInternal),
+    mutationFn: () => api.addComment(ticket?.id || id!, comment, isInternal),
     onSuccess: () => { toast.success('Comment added'); setComment(''); qc.invalidateQueries({ queryKey: ['ticket', id] }); },
     onError: () => toast.error('Failed to add comment'),
   });
 
   const assignMutation = useMutation({
-    mutationFn: () => api.assignTicket(id!, newAssignee, newTeam || undefined),
+    mutationFn: () => api.assignTicket(ticket?.id || id!, newAssignee, newTeam || undefined),
     onSuccess: () => { toast.success('Ticket assigned'); setAssignModal(false); qc.invalidateQueries({ queryKey: ['ticket', id] }); },
     onError: () => toast.error('Assignment failed'),
   });
@@ -62,7 +62,7 @@ export default function AdminTicketDetail() {
       if (newStatus === 'RESOLVED' && !resolution.trim()) {
         throw new Error('Resolution notes are required when resolving a ticket.');
       }
-      return api.updateTicketStatus(id!, newStatus, resolution.trim() || undefined);
+      return api.updateTicketStatus(ticket?.id || id!, newStatus, resolution.trim() || undefined);
     },
     onSuccess: () => { toast.success('Status updated'); setStatusModal(false); qc.invalidateQueries({ queryKey: ['ticket', id] }); },
     onError: (err: any) => toast.error(getErrorMessage(err)),

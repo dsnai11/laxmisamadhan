@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TicketPriority, TicketCategory, TicketStatus } from '@prisma/client';
 
 export const ticketIdParamSchema = z.object({
-  id: z.string().uuid('Invalid ticket ID'),
+  id: z.string({ required_error: 'Invalid ticket ID' }).trim().min(1, 'Invalid ticket ID').max(100, 'Invalid ticket ID').regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID'),
 });
 
 export const createTicketSchema = z.object({
@@ -99,7 +99,7 @@ export const ticketQuerySchema = z.object({
 });
 
 export const bulkActionSchema = z.object({
-  ticketIds: z.array(z.string().uuid()).min(1, 'At least one ticket ID is required').max(100),
+  ticketIds: z.array(z.string().trim().regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID')).min(1, 'At least one ticket ID is required').max(100),
   action: z.enum(['assign', 'status', 'priority', 'department', 'tags', 'delete', 'export', 'merge', 'link']),
   data: z.record(z.any()),
 });
@@ -127,7 +127,7 @@ export const slaPolicySchema = z.object({
 });
 
 export const approvalSchema = z.object({
-  ticketId: z.string().uuid('Invalid ticket ID'),
+  ticketId: z.string().trim().regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID'),
   approverId: z.string().uuid('Invalid approver ID'),
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().max(5000),

@@ -98,6 +98,23 @@ describe('OWASP Top 10 Security Verification Suite', () => {
       }
     });
 
+    it('should accept valid UUIDs and ticket number identifiers', () => {
+      const validIdentifiers = [
+        'SW-24-00001',
+        'sw-24-00001',
+        'TKT-26-00040',
+        'HW-24-00001',
+        'SEC-24-00001',
+        '7c381b9e-a5a7-4cbd-a52d-896c19549594',
+        'A1B2C3D4-E5F6-7890-ABCD-EF1234567890',
+      ];
+
+      for (const id of validIdentifiers) {
+        const result = ticketIdParamSchema.safeParse({ id });
+        expect(result.success).toBe(true);
+      }
+    });
+
     it('should enforce strict schema constraints on ticket creation input', () => {
       const invalidTicket = {
         title: '', // min length violation

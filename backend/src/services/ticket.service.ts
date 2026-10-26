@@ -195,9 +195,14 @@ class TicketService {
     };
   }
 
+  private resolveTicketWhere(idOrNumber: string): { id: string } | { ticketNumber: string } {
+    const trimmed = (idOrNumber || '').trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+    return isUuid ? { id: trimmed } : { ticketNumber: trimmed.toUpperCase() };
+  }
+
   async getTicketById(id: string, userId: string, userRole: UserRole): Promise<any> {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    const where = isUuid ? { id } : { ticketNumber: id };
+    const where = this.resolveTicketWhere(id);
     const ticket = await prisma.ticket.findUnique({
       where: where as any,
       include: {
@@ -273,7 +278,7 @@ class TicketService {
     userRoles?: UserRole[]
   ): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: this.resolveTicketWhere(id) as any,
       include: { department: true },
     });
 
@@ -412,7 +417,7 @@ class TicketService {
     actorRoles?: UserRole[]
   ): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: this.resolveTicketWhere(id) as any,
       include: { department: true, assignedTo: true },
     });
 
@@ -528,7 +533,7 @@ class TicketService {
 
   async updateStatus(id: string, status: TicketStatus, userId: string, userRole: UserRole, resolution?: string, resolutionSummary?: string): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: this.resolveTicketWhere(id) as any,
       include: { raisedBy: true, assignedTo: true, department: true },
     });
 
@@ -615,7 +620,7 @@ class TicketService {
 
   async addComment(ticketId: string, userId: string, content: string, isInternal: boolean, parentId?: string, mentions?: string[], userRole?: UserRole): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
+      where: this.resolveTicketWhere(ticketId) as any,
       include: { raisedBy: true, assignedTo: true, department: true, watchers: { include: { user: true } } },
     });
 
@@ -631,16 +636,16 @@ class TicketService {
     }
 
     if (!isInternal && !ticket.respondedAt && userId !== ticket.raisedById) {
-      await prisma.ticket.update({ where: { id: ticketId }, data: { respondedAt: new Date() } });
+      await prisma.ticket.update({ where: { id: ticket.id }, data: { respondedAt: new Date() } });
     }
 
     if (!isInternal && userId === ticket.raisedById && ticket.status === TicketStatus.DEPENDENCY_ON_CLIENT) {
-      await this.updateStatus(ticketId, TicketStatus.OPEN, userId, userRole || UserRole.RAISER);
+      await this.updateStatus(ticket.id, TicketStatus.OPEN, userId, userRole || UserRole.RAISER);
     }
 
     const comment = await prisma.comment.create({
       data: {
-        ticketId,
+        ticketId: ticket.id,
         userId,
         content,
         isInternal,
@@ -653,7 +658,7 @@ class TicketService {
       },
     });
 
-    await logActivity(userId, 'COMMENT_ADDED', isInternal ? 'Added internal note' : 'Added comment', ticketId, { 
+    await logActivity(userId, 'COMMENT_ADDED', isInternal ? 'Added internal note' : 'Added comment', ticket.id, { 
       commentId: comment.id,
       isInternal,
     });
@@ -687,13 +692,13 @@ class TicketService {
   }
 
   async addAttachment(ticketId: string, userId: string, userRole: UserRole, file: Express.Multer.File): Promise<any> {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { department: true, watchers: true } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, include: { department: true, watchers: true } });
     if (!ticket) throw new Error('Ticket not found');
     if (!this.canAccessTicket(ticket, userId, userRole, await this.getUserDepartmentId(userId))) {
       throw new Error('Access denied');
     }
 
-    const dir = path.resolve(config.upload.dir, 'tickets', ticketId);
+    const dir = path.resolve(config.upload.dir, 'tickets', ticket.id);
     await fs.promises.mkdir(dir, { recursive: true });
     const ext = path.extname(file.originalname).slice(0, 12).replace(/[^.\w]/g, '');
     const fileName = `${crypto.randomUUID()}${ext}`;
@@ -702,7 +707,7 @@ class TicketService {
 
     const attachment = await prisma.attachment.create({
       data: {
-        ticketId,
+        ticketId: ticket.id,
         userId,
         fileName,
         originalName: file.originalname,
@@ -714,13 +719,15 @@ class TicketService {
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
 
-    await logActivity(userId, 'ATTACHMENT_ADDED', `Attached ${file.originalname}`, ticketId, { attachmentId: attachment.id });
+    await logActivity(userId, 'ATTACHMENT_ADDED', `Attached ${file.originalname}`, ticket.id, { attachmentId: attachment.id });
     return attachment;
   }
 
   async getAttachmentForDownload(ticketId: string, attachmentId: string, userId: string, userRole: UserRole): Promise<any> {
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, select: { id: true } });
+    const realTicketId = ticket?.id || ticketId;
     const attachment = await prisma.attachment.findFirst({
-      where: { id: attachmentId, ticketId },
+      where: { id: attachmentId, ticketId: realTicketId },
       include: { ticket: { include: { department: true, watchers: true } } },
     });
     if (!attachment || !attachment.ticket) throw new Error('Attachment not found');
@@ -731,35 +738,40 @@ class TicketService {
   }
 
   async deleteAttachment(ticketId: string, attachmentId: string, userId: string, userRole: UserRole): Promise<void> {
-    const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, ticketId } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, select: { id: true } });
+    const realTicketId = ticket?.id || ticketId;
+    const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, ticketId: realTicketId } });
     if (!attachment) throw new Error('Attachment not found');
     if (attachment.userId !== userId && !['SUPER_ADMIN', 'ADMIN'].includes(userRole)) {
       throw new Error('Permission denied');
     }
     await prisma.attachment.delete({ where: { id: attachmentId } });
     await fs.promises.unlink(attachment.path).catch(() => undefined);
-    await logActivity(userId, 'ATTACHMENT_REMOVED', `Removed ${attachment.originalName}`, ticketId, { attachmentId });
+    await logActivity(userId, 'ATTACHMENT_REMOVED', `Removed ${attachment.originalName}`, realTicketId, { attachmentId });
   }
 
   async addWatcher(ticketId: string, userId: string, addedById: string): Promise<void> {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
     if (!ticket) throw new Error('Ticket not found');
 
     await prisma.ticketWatcher.upsert({
-      where: { ticketId_userId: { ticketId, userId } },
-      create: { ticketId, userId },
+      where: { ticketId_userId: { ticketId: ticket.id, userId } },
+      create: { ticketId: ticket.id, userId },
       update: {},
     });
 
-    await logActivity(addedById, 'WATCHER_ADDED', `Added watcher`, ticketId, { watcherId: userId });
+    await logActivity(addedById, 'WATCHER_ADDED', `Added watcher`, ticket.id, { watcherId: userId });
   }
 
   async removeWatcher(ticketId: string, userId: string, removedById: string): Promise<void> {
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
+    if (!ticket) throw new Error('Ticket not found');
+
     await prisma.ticketWatcher.delete({
-      where: { ticketId_userId: { ticketId, userId } },
+      where: { ticketId_userId: { ticketId: ticket.id, userId } },
     });
 
-    await logActivity(removedById, 'WATCHER_REMOVED', `Removed watcher`, ticketId, { watcherId: userId });
+    await logActivity(removedById, 'WATCHER_REMOVED', `Removed watcher`, ticket.id, { watcherId: userId });
   }
 
   async bulkAction(ticketIds: string[], action: string, data: Record<string, any>, userId: string, userRole: UserRole, userRoles?: UserRole[]): Promise<{ success: number; failed: number; errors: any[] }> {
@@ -767,7 +779,7 @@ class TicketService {
 
     for (const ticketId of ticketIds) {
       try {
-        const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+        const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
         if (!ticket) {
           results.failed++;
           results.errors.push({ ticketId, error: 'Ticket not found' });
@@ -783,23 +795,23 @@ class TicketService {
 
         switch (action) {
           case 'assign':
-            await this.assignTicket(ticketId, data.assignedToId, userId, data.teamId, data.note, userRole, userRoles);
+            await this.assignTicket(ticket.id, data.assignedToId, userId, data.teamId, data.note, userRole, userRoles);
             break;
           case 'status':
-            await this.updateStatus(ticketId, data.status, userId, userRole, data.resolution, data.resolutionSummary);
+            await this.updateStatus(ticket.id, data.status, userId, userRole, data.resolution, data.resolutionSummary);
             break;
           case 'priority':
-            await this.updateTicket(ticketId, { priority: data.priority }, userId, userRole);
+            await this.updateTicket(ticket.id, { priority: data.priority }, userId, userRole);
             break;
           case 'department':
-            await this.updateTicket(ticketId, { departmentId: data.departmentId }, userId, userRole);
+            await this.updateTicket(ticket.id, { departmentId: data.departmentId }, userId, userRole);
             break;
           case 'tags':
-            await this.updateTicket(ticketId, { tags: data.tags }, userId, userRole);
+            await this.updateTicket(ticket.id, { tags: data.tags }, userId, userRole);
             break;
           case 'merge':
-            if (data.primaryTicketId && ticketId !== data.primaryTicketId) {
-              const primary = await prisma.ticket.findUnique({ where: { id: data.primaryTicketId } });
+            if (data.primaryTicketId && ticket.id !== data.primaryTicketId) {
+              const primary = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(data.primaryTicketId) as any });
               if (primary) {
                 await prisma.comment.create({
                   data: {
@@ -810,21 +822,21 @@ class TicketService {
                     isSystem: true,
                   },
                 });
-                await this.updateStatus(ticketId, TicketStatus.RESOLVED, userId, userRole, `Merged into ticket #${primary.ticketNumber}`, `Merged into ticket #${primary.ticketNumber}`);
+                await this.updateStatus(ticket.id, TicketStatus.RESOLVED, userId, userRole, `Merged into ticket #${primary.ticketNumber}`, `Merged into ticket #${primary.ticketNumber}`);
               }
             }
             break;
           case 'link':
-            if (data.parentTicketId && ticketId !== data.parentTicketId) {
+            if (data.parentTicketId && ticket.id !== data.parentTicketId) {
               await prisma.ticket.update({
-                where: { id: ticketId },
+                where: { id: ticket.id },
                 data: { parentTicketId: data.parentTicketId },
               });
-              await logActivity(userId, 'TICKET_LINKED', `Linked to parent ticket`, ticketId);
+              await logActivity(userId, 'TICKET_LINKED', `Linked to parent ticket`, ticket.id);
             }
             break;
           case 'delete':
-            await this.deleteTicket(ticketId, userId, userRole);
+            await this.deleteTicket(ticket.id, userId, userRole);
             break;
         }
 
@@ -839,15 +851,15 @@ class TicketService {
   }
 
   async deleteTicket(id: string, userId: string, userRole: UserRole): Promise<void> {
-    const ticket = await prisma.ticket.findUnique({ where: { id } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(id) as any });
     if (!ticket) throw new Error('Ticket not found');
 
     if (!['SUPER_ADMIN', 'ADMIN'].includes(userRole) && ticket.raisedById !== userId) {
       throw new Error('Permission denied');
     }
 
-    await prisma.ticket.delete({ where: { id } });
-    await logActivity(userId, 'TICKET_DELETED', `Deleted ticket ${ticket.ticketNumber}`, id);
+    await prisma.ticket.delete({ where: { id: ticket.id } });
+    await logActivity(userId, 'TICKET_DELETED', `Deleted ticket ${ticket.ticketNumber}`, ticket.id);
   }
 
   async getTicketStats(
