@@ -6,6 +6,7 @@ import {
   ClockIcon,
   CheckCircleIcon,
   ArrowPathIcon,
+  BuildingOfficeIcon,
   ExclamationTriangleIcon,
   UserGroupIcon,
   ChartBarIcon,
@@ -69,6 +70,7 @@ export default function AgentDashboard() {
   // Accurate counts derived from backend database
   const openCount = statsData?.openCount ?? 0;
   const dependencyCount = statsData?.dependencyCount ?? 0;
+  const dependencyVendorCount = statsData?.dependencyVendorCount ?? 0;
   const reopenedCount = statsData?.reopenedCount ?? 0;
   const resolvedCount = statsData?.resolvedCount ?? 0;
   const resolvedToday = statsData?.resolvedTodayCount ?? 0;
@@ -85,8 +87,8 @@ export default function AgentDashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => (
             <div key={i} className="card p-6 animate-pulse">
               <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
               <div className="h-8 bg-gray-200 dark:bg-slate-700 rounded w-1/2"></div>
@@ -206,61 +208,75 @@ export default function AgentDashboard() {
       </div>
 
       {/* Performance Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* 1. Open Tickets */}
-        <Link to="/agent/my-assignments?status=OPEN" className="card p-5 sm:p-6 hover:shadow-card-hover transition-shadow group">
+        <Link to="/agent/my-assignments?status=OPEN" className="card p-4 sm:p-5 hover:shadow-card-hover transition-shadow group">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Open Tickets</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">Open Tickets</p>
               <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">{openCount}</p>
-              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Active work in progress</span>
+              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block truncate">Active work in progress</span>
             </div>
-            <div className="p-3 rounded-xl bg-blue-500 text-white shadow-xs group-hover:scale-105 transition-transform">
-              <TicketIcon className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-blue-500 text-white shadow-xs group-hover:scale-105 transition-transform shrink-0">
+              <TicketIcon className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </div>
         </Link>
 
-        {/* 2. Dependency on Client */}
-        <Link to="/agent/my-assignments?status=DEPENDENCY_ON_CLIENT" className="card p-5 sm:p-6 hover:shadow-card-hover transition-shadow group">
+        {/* 2. Dependency on User */}
+        <Link to="/agent/my-assignments?status=DEPENDENCY_ON_CLIENT" className="card p-4 sm:p-5 hover:shadow-card-hover transition-shadow group">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Waiting on User</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">Dependency on User</p>
               <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-amber-600 dark:text-amber-400">{dependencyCount}</p>
-              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Pending user response</span>
+              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block truncate">Pending user response</span>
             </div>
-            <div className="p-3 rounded-xl bg-amber-500 text-white shadow-xs group-hover:scale-105 transition-transform">
-              <ArrowPathIcon className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-amber-500 text-white shadow-xs group-hover:scale-105 transition-transform shrink-0">
+              <ArrowPathIcon className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </div>
         </Link>
 
-        {/* 3. Reopened Tickets */}
-        <Link to="/agent/my-assignments?status=REOPENED" className="card p-5 sm:p-6 hover:shadow-card-hover transition-shadow group">
+        {/* 3. Dependency on Vendor */}
+        <Link to="/agent/my-assignments?status=DEPENDENCY_ON_VENDOR" className="card p-4 sm:p-5 hover:shadow-card-hover transition-shadow group">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Reopened</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">Dependency on Vendor</p>
+              <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-purple-600 dark:text-purple-400">{dependencyVendorCount}</p>
+              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block truncate">Pending 3rd-party vendor</span>
+            </div>
+            <div className="p-2.5 sm:p-3 rounded-xl bg-purple-500 text-white shadow-xs group-hover:scale-105 transition-transform shrink-0">
+              <BuildingOfficeIcon className="h-5 w-5 sm:h-6 sm:w-6" />
+            </div>
+          </div>
+        </Link>
+
+        {/* 4. Reopened Tickets */}
+        <Link to="/agent/my-assignments?status=REOPENED" className="card p-4 sm:p-5 hover:shadow-card-hover transition-shadow group">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">Reopened</p>
               <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-rose-600 dark:text-rose-400">{reopenedCount}</p>
-              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Needs attention</span>
+              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block truncate">Needs attention</span>
             </div>
-            <div className="p-3 rounded-xl bg-rose-500 text-white shadow-xs group-hover:scale-105 transition-transform">
-              <ClockIcon className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-rose-500 text-white shadow-xs group-hover:scale-105 transition-transform shrink-0">
+              <ClockIcon className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </div>
         </Link>
 
-        {/* 4. Resolved Tickets - Total Count & Today's Metric */}
-        <Link to="/agent/my-assignments?status=RESOLVED" className="card p-5 sm:p-6 hover:shadow-card-hover transition-shadow group">
+        {/* 5. Resolved Tickets */}
+        <Link to="/agent/my-assignments?status=RESOLVED" className="card p-4 sm:p-5 hover:shadow-card-hover transition-shadow group">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Resolved Tickets</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">Resolved Tickets</p>
               <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">{resolvedCount}</p>
-              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1 block">
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1 block truncate">
                 {resolvedToday > 0 ? `+${resolvedToday} resolved today` : 'All time resolved'}
               </span>
             </div>
-            <div className="p-3 rounded-xl bg-emerald-500 text-white shadow-xs group-hover:scale-105 transition-transform">
-              <CheckCircleIcon className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-500 text-white shadow-xs group-hover:scale-105 transition-transform shrink-0">
+              <CheckCircleIcon className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </div>
         </Link>
