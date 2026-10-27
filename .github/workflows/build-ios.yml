@@ -20,20 +20,18 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
+      - name: Verify Xcode Version & Platforms
         run: |
           echo "Available Xcode installations:"
-          ls -d /Applications/Xcode*.app || true
-          if [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.2.app"
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.1.app"
-          elif [ -d "/Applications/Xcode_16.0.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.0.app"
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s "/Applications/Xcode_16.app"
+          ls -la /Applications/ | grep -i xcode || true
+          if [ -d "/Applications/Xcode.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode.app"
           fi
+          echo "Active Developer Directory:"
+          xcode-select -p
           xcodebuild -version
+          echo "Installed SDKs:"
+          xcodebuild -showsdks
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -74,37 +72,33 @@ jobs:
           echo "Working dir: $(pwd)"
           ls -la
 
-          # Choose workspace or project (.xcworkspace and .xcodeproj are bundle directories)
-          if [ -d App.xcworkspace ] || [ -e App.xcworkspace ]; then
-            WORKSPACE="App.xcworkspace"
-            SCHEME="App"
-            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
-          elif [ -d App.xcodeproj ] || [ -e App.xcodeproj ]; then
-            PROJECT="App.xcodeproj"
-            SCHEME="App"
-            BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
-          elif compgen -G "*.xcworkspace" > /dev/null; then
-            WORKSPACE=$(ls -d *.xcworkspace | head -n1)
-            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
-          elif compgen -G "*.xcodeproj" > /dev/null; then
-            PROJECT=$(ls -d *.xcodeproj | head -n1)
-            SCHEME=$(basename "$PROJECT" .xcodeproj)
-            BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
-          else
-            echo "No .xcworkspace or .xcodeproj found in $(pwd)" >&2
-            ls -la
-            exit 1
-          fi
-
-          echo "Listing available Xcode projects and schemes:"
+          echo "Listing available Xcode projects, targets, and schemes:"
           xcodebuild -list -project App.xcodeproj || true
 
-          echo "Using build target: ${BUILD_CMD[*]}"
-          "${BUILD_CMD[@]}" \
+          echo "Listing available destinations for App scheme:"
+          xcodebuild -showdestinations -project App.xcodeproj -scheme App || true
+
+          # Build release binary for iOS device
+          echo "Building iOS App release binary..."
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO || \
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
             -derivedDataPath build \
             build \
             CODE_SIGNING_ALLOWED=NO \
