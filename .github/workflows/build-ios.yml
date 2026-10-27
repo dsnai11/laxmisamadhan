@@ -100,24 +100,27 @@ jobs:
           echo "Using build target: ${BUILD_CMD[*]}"
           "${BUILD_CMD[@]}" \
             -configuration Release \
+            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath App.xcarchive \
-            archive \
+            -derivedDataPath build \
+            build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
 
-          # Package into .ipa using whatever .app was produced
-          APP_PATH=$(find App.xcarchive/Products/Applications -name "*.app" -maxdepth 2 | head -n1 || true)
+          # Locate compiled .app inside build directory
+          APP_PATH=$(find build/Build/Products -name "*.app" | head -n1 || true)
           if [ -z "$APP_PATH" ]; then
-            echo "No .app found under App.xcarchive/Products/Applications" >&2
-            ls -R App.xcarchive || true
+            echo "Searching for any .app in build directory..." >&2
+            find build -name "*.app" || true
             exit 1
           fi
 
-          echo "Found app: $APP_PATH"
-          rm -rf Payload
+          echo "Found compiled app at: $APP_PATH"
+          rm -rf Payload LaxmiSamadhan.ipa
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r LaxmiSamadhan.ipa Payload/
