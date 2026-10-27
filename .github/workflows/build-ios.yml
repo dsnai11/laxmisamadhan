@@ -12,13 +12,28 @@ on:
 jobs:
   build-ipa:
     name: Build iOS App & IPA
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: |
+          echo "Available Xcode installations:"
+          ls -d /Applications/Xcode*.app || true
+          if [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.2.app"
+          elif [ -d "/Applications/Xcode_16.1.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.1.app"
+          elif [ -d "/Applications/Xcode_16.0.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.0.app"
+          elif [ -d "/Applications/Xcode_16.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_16.app"
+          fi
+          xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,7 +47,9 @@ jobs:
 
       - name: Install Frontend Dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile --ignore-workspace
+        run: |
+          pnpm config set node-linker hoisted
+          pnpm install --no-frozen-lockfile --ignore-workspace --shamefully-hoist
 
       - name: Build Web Frontend
         working-directory: frontend
@@ -45,18 +62,10 @@ jobs:
         working-directory: frontend
         run: npx cap sync ios
 
-      - name: Install CocoaPods Dependencies (if Podfile exists)
+      - name: Resolve Xcode Package Dependencies
         working-directory: frontend/ios/App
         run: |
-          set -e
-          if [ -f Podfile ]; then
-            if ! command -v pod >/dev/null 2>&1; then
-              gem install cocoapods --no-document || brew install cocoapods
-            fi
-            pod install --repo-update
-          else
-            echo "No Podfile found; skipping pod install"
-          fi
+          xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App || true
 
       - name: Build & Package iOS App into IPA
         working-directory: frontend/ios/App
@@ -96,7 +105,8 @@ jobs:
             archive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
           # Package into .ipa using whatever .app was produced
           APP_PATH=$(find App.xcarchive/Products/Applications -name "*.app" -maxdepth 2 | head -n1 || true)

@@ -38,7 +38,9 @@ jobs:
 
       - name: Install Frontend Dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile --ignore-workspace
+        run: |
+          pnpm config set node-linker hoisted
+          pnpm install --no-frozen-lockfile --ignore-workspace --shamefully-hoist
 
       - name: Build Web Frontend
         working-directory: frontend
