@@ -20,7 +20,7 @@ import {
 import { useAuth } from '@context/AuthContext';
 import toast from 'react-hot-toast';
 import { cn } from '@utils/helpers';
-import biometricService, { BiometricInfo, SavedUserProfile } from '@services/biometric.service';
+import biometricService, { BiometricInfo, SavedUserProfile, UnlockedCredentials } from '@services/biometric.service';
 import { QuickPinKeypad, BiometricSetupModal } from '@components/auth/BiometricQuickAuth';
 import { Capacitor } from '@capacitor/core';
 
@@ -35,7 +35,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, initializeAuth } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showMFA, setShowMFA] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -78,6 +78,27 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Common Unlock Handler
+  const performUnlock = async (creds: UnlockedCredentials) => {
+    if (creds.password && creds.password.trim().length > 0) {
+      await login(creds.employeeId, creds.password, undefined, true);
+      toast.success(`Welcome back, ${savedProfile?.userName || creds.employeeId}!`);
+      navigate('/');
+      return;
+    }
+
+    if (creds.accessToken) {
+      localStorage.setItem('accessToken', creds.accessToken);
+      if (creds.refreshToken) localStorage.setItem('refreshToken', creds.refreshToken);
+      await initializeAuth();
+      toast.success(`Welcome back, ${savedProfile?.userName || creds.employeeId}!`);
+      navigate('/');
+      return;
+    }
+
+    throw new Error('Please log in with your password to continue.');
+  };
+
   // Biometric Unlock (Face ID / Fingerprint)
   const handleBiometricUnlock = async () => {
     setIsLoading(true);
@@ -88,9 +109,7 @@ export default function LoginPage() {
         setIsLoading(false);
         return;
       }
-      await login(creds.employeeId, creds.password, undefined, true);
-      toast.success(`Welcome back, ${savedProfile?.userName || creds.employeeId}!`);
-      navigate('/');
+      await performUnlock(creds);
     } catch (err: any) {
       console.warn('Biometric login failed:', err);
       toast.error('Biometric authentication failed. Please enter your PIN or password.');
@@ -111,9 +130,7 @@ export default function LoginPage() {
         setIsLoading(false);
         return;
       }
-      await login(creds.employeeId, creds.password, undefined, true);
-      toast.success(`Welcome back, ${savedProfile?.userName || creds.employeeId}!`);
-      navigate('/');
+      await performUnlock(creds);
     } catch (err: any) {
       setQuickPin('');
       toast.error('PIN login failed. Please try again or use your password.');

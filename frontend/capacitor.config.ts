@@ -17,6 +17,8 @@ const config: CapacitorConfig = {
     includePlugins: [
       '@capacitor/haptics',
       '@capacitor/keyboard',
+      '@capacitor/local-notifications',
+      '@capgo/capacitor-native-biometric',
     ],
   },
   plugins: {

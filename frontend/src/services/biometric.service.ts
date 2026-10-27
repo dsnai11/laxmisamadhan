@@ -24,7 +24,14 @@ export interface SavedUserProfile {
   biometryLabel: string;
 }
 
-// Simple fast SHA-256 hash using Web Crypto API
+export interface UnlockedCredentials {
+  employeeId: string;
+  password?: string;
+  accessToken?: string;
+  refreshToken?: string;
+}
+
+// Fast SHA-256 hash
 async function sha256(message: string): Promise<string> {
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const msgUint8 = new TextEncoder().encode(message);
@@ -32,7 +39,6 @@ async function sha256(message: string): Promise<string> {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // Fallback hash
   let hash = 0;
   for (let i = 0; i < message.length; i++) {
     const char = message.charCodeAt(i);
@@ -78,33 +84,19 @@ class BiometricService {
   private cachedInfo: BiometricInfo | null = null;
 
   /**
-   * Check if biometrics (Face ID, Fingerprint, Face Recognition) are supported and enrolled
+   * Check if biometrics (Face ID, Fingerprint, Face Recognition) are supported
    */
   async getBiometricInfo(): Promise<BiometricInfo> {
     if (this.cachedInfo) return this.cachedInfo;
 
     const isNative = Capacitor.isNativePlatform();
+    const platform = Capacitor.getPlatform();
 
     if (!isNative) {
-      // In web browser / dev mode: check if WebAuthn is available
-      const webAuthnAvailable =
-        typeof window !== 'undefined' &&
-        !!window.PublicKeyCredential &&
-        typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function';
-
-      let isAvailable = false;
-      if (webAuthnAvailable) {
-        try {
-          isAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        } catch {
-          isAvailable = false;
-        }
-      }
-
       this.cachedInfo = {
-        isAvailable,
-        biometryType: BiometryType.FINGERPRINT,
-        biometryLabel: 'Biometrics / Face Recognition',
+        isAvailable: true,
+        biometryType: BiometryType.MULTIPLE,
+        biometryLabel: 'Face ID & Fingerprint',
         hasFaceRecognition: true,
         hasFingerprint: true,
       };
@@ -113,11 +105,11 @@ class BiometricService {
 
     try {
       const res = await NativeBiometric.isAvailable({
-        useFallback: true,
+        useFallback: platform === 'ios',
         preferMultipleBiometryType: true,
       });
 
-      let label = 'Biometrics';
+      let label = platform === 'ios' ? 'Face ID' : 'Fingerprint & Face Lock';
       let hasFace = false;
       let hasFingerprint = false;
 
@@ -139,32 +131,32 @@ class BiometricService {
           hasFace = true;
           break;
         case BiometryType.MULTIPLE:
-          label = 'Face ID & Fingerprint';
+          label = platform === 'ios' ? 'Face ID' : 'Fingerprint & Face Lock';
           hasFace = true;
           hasFingerprint = true;
           break;
         default:
-          label = 'Biometrics';
+          label = platform === 'ios' ? 'Face ID / Touch ID' : 'Fingerprint / Face Lock';
           hasFace = true;
           hasFingerprint = true;
       }
 
       this.cachedInfo = {
-        isAvailable: res.isAvailable,
-        biometryType: res.biometryType,
+        isAvailable: res.isAvailable !== false,
+        biometryType: res.biometryType || BiometryType.MULTIPLE,
         biometryLabel: label,
-        hasFaceRecognition: hasFace,
-        hasFingerprint,
+        hasFaceRecognition: hasFace || label.includes('Face'),
+        hasFingerprint: hasFingerprint || label.includes('Fingerprint') || label.includes('Touch'),
       };
       return this.cachedInfo;
     } catch (err) {
       console.warn('NativeBiometric check error:', err);
       return {
-        isAvailable: false,
-        biometryType: BiometryType.NONE,
-        biometryLabel: 'Biometrics',
-        hasFaceRecognition: false,
-        hasFingerprint: false,
+        isAvailable: true,
+        biometryType: BiometryType.MULTIPLE,
+        biometryLabel: platform === 'ios' ? 'Face ID / Touch ID' : 'Fingerprint / Face Lock',
+        hasFaceRecognition: true,
+        hasFingerprint: true,
       };
     }
   }
@@ -174,14 +166,12 @@ class BiometricService {
    */
   async verifyBiometric(customReason?: string): Promise<boolean> {
     const isNative = Capacitor.isNativePlatform();
+    if (!isNative) return true;
 
-    if (!isNative) {
-      // In web/desktop preview: simulate or prompt
-      return true;
-    }
+    const isIOS = Capacitor.getPlatform() === 'ios';
+    const info = await this.getBiometricInfo();
 
     try {
-      const info = await this.getBiometricInfo();
       await NativeBiometric.verifyIdentity({
         reason: customReason || `Scan your ${info.biometryLabel} to log in to Laxmi Samadhan`,
         title: 'Laxmi Samadhan Quick Login',
@@ -189,21 +179,21 @@ class BiometricService {
         description: 'Please scan your face or finger to continue',
         negativeButtonText: 'Use PIN or Password',
         maxAttempts: 3,
-        useFallback: true,
+        useFallback: isIOS,
       });
       return true;
     } catch (err: any) {
-      console.warn('Biometric verification failed:', err);
+      console.warn('Biometric verification error:', err);
       return false;
     }
   }
 
   /**
-   * Saves credentials for Biometric and/or PIN login
+   * Saves credentials and tokens for Biometric and/or PIN login
    */
   async enableBiometricAndPin(params: {
     employeeId: string;
-    password: string;
+    password?: string;
     userName?: string;
     enableBiometric: boolean;
     pin?: string;
@@ -212,12 +202,13 @@ class BiometricService {
     const isNative = Capacitor.isNativePlatform();
 
     // 1. Save user profile info
+    const info = await this.getBiometricInfo();
     const profile: SavedUserProfile = {
       employeeId,
       userName: userName || employeeId,
       biometricEnabled: enableBiometric,
       hasPin: !!pin && pin.length >= 4,
-      biometryLabel: (await this.getBiometricInfo()).biometryLabel,
+      biometryLabel: info.biometryLabel,
     };
     localStorage.setItem(KEY_SAVED_USER, JSON.stringify(profile));
     localStorage.setItem(KEY_BIOMETRIC_ENABLED, enableBiometric ? 'true' : 'false');
@@ -228,22 +219,35 @@ class BiometricService {
       localStorage.setItem(KEY_PIN_HASH, pinHash);
     }
 
-    // 3. Save credentials in Native KeyStore / Keychain if native
-    if (isNative) {
-      try {
-        await NativeBiometric.setCredentials({
-          server: SERVER_NAME,
-          username: employeeId,
-          password: password,
-        });
-      } catch (err) {
-        console.warn('NativeBiometric setCredentials warning:', err);
+    // 3. Save accessToken & refreshToken so unlock doesn't depend only on raw password
+    const accessToken = localStorage.getItem('accessToken') || '';
+    const refreshToken = localStorage.getItem('refreshToken') || '';
+
+    // If password provided, save credentials in KeyStore / Keychain
+    if (password && password.trim().length > 0) {
+      if (isNative) {
+        try {
+          await NativeBiometric.setCredentials({
+            server: SERVER_NAME,
+            username: employeeId,
+            password: password.trim(),
+          });
+        } catch (err) {
+          console.warn('NativeBiometric setCredentials warning:', err);
+        }
       }
     }
 
-    // 4. Secure local encrypted payload (bound to device secret)
+    // 4. Secure local encrypted payload
     const deviceSecret = `lifc_${employeeId}_secure_key`;
-    const payloadJson = JSON.stringify({ employeeId, password, ts: Date.now() });
+    const payloadJson = JSON.stringify({
+      employeeId,
+      password: (password || '').trim(),
+      accessToken,
+      refreshToken,
+      userName: userName || employeeId,
+      ts: Date.now(),
+    });
     const encrypted = encryptPayload(payloadJson, deviceSecret);
     localStorage.setItem(KEY_SECURE_PAYLOAD, encrypted);
   }
@@ -251,7 +255,7 @@ class BiometricService {
   /**
    * Retrieves saved credentials using Biometric verification
    */
-  async loginWithBiometrics(): Promise<{ employeeId: string; password: string } | null> {
+  async loginWithBiometrics(): Promise<UnlockedCredentials | null> {
     const profile = this.getSavedProfile();
     if (!profile || !profile.biometricEnabled) return null;
 
@@ -264,7 +268,7 @@ class BiometricService {
   /**
    * Verifies PIN and returns credentials if correct
    */
-  async loginWithPin(enteredPin: string): Promise<{ employeeId: string; password: string } | null> {
+  async loginWithPin(enteredPin: string): Promise<UnlockedCredentials | null> {
     const savedPinHash = localStorage.getItem(KEY_PIN_HASH);
     if (!savedPinHash) return null;
 
@@ -280,42 +284,49 @@ class BiometricService {
   }
 
   /**
-   * Helper to retrieve stored credentials (from Native Keychain/KeyStore or encrypted storage)
+   * Helper to retrieve stored credentials (Keychain/KeyStore or encrypted payload)
    */
-  private async getStoredCredentials(employeeId: string): Promise<{ employeeId: string; password: string } | null> {
+  private async getStoredCredentials(employeeId: string): Promise<UnlockedCredentials | null> {
     const isNative = Capacitor.isNativePlatform();
 
+    let nativePassword = '';
     if (isNative) {
       try {
         const creds = await NativeBiometric.getCredentials({ server: SERVER_NAME });
-        if (creds && creds.username && creds.password) {
-          return { employeeId: creds.username, password: creds.password };
+        if (creds && creds.password) {
+          nativePassword = creds.password;
         }
       } catch {
-        // Fallback to local encrypted payload
+        // ignore
       }
     }
 
     const encrypted = localStorage.getItem(KEY_SECURE_PAYLOAD);
-    if (!encrypted) return null;
+    if (!encrypted) {
+      if (nativePassword) {
+        return { employeeId, password: nativePassword };
+      }
+      return null;
+    }
 
     const deviceSecret = `lifc_${employeeId}_secure_key`;
     const decrypted = decryptPayload(encrypted, deviceSecret);
     try {
       const parsed = JSON.parse(decrypted);
-      if (parsed && parsed.employeeId && parsed.password) {
-        return { employeeId: parsed.employeeId, password: parsed.password };
-      }
+      return {
+        employeeId: parsed.employeeId || employeeId,
+        password: nativePassword || parsed.password || '',
+        accessToken: parsed.accessToken,
+        refreshToken: parsed.refreshToken,
+      };
     } catch {
+      if (nativePassword) {
+        return { employeeId, password: nativePassword };
+      }
       return null;
     }
-
-    return null;
   }
 
-  /**
-   * Get saved profile metadata
-   */
   getSavedProfile(): SavedUserProfile | null {
     try {
       const raw = localStorage.getItem(KEY_SAVED_USER);
@@ -326,25 +337,16 @@ class BiometricService {
     }
   }
 
-  /**
-   * Checks if Biometrics is configured and enabled
-   */
   isBiometricEnabled(): boolean {
     const profile = this.getSavedProfile();
     return !!profile && profile.biometricEnabled;
   }
 
-  /**
-   * Checks if PIN is configured
-   */
   isPinConfigured(): boolean {
     const profile = this.getSavedProfile();
     return !!profile && profile.hasPin && !!localStorage.getItem(KEY_PIN_HASH);
   }
 
-  /**
-   * Remove biometric and PIN login data (on user logout or reset)
-   */
   async clearBiometricsAndPin(): Promise<void> {
     if (Capacitor.isNativePlatform()) {
       try {
