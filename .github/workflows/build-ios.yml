@@ -97,6 +97,9 @@ jobs:
             exit 1
           fi
 
+          echo "Listing available Xcode projects and schemes:"
+          xcodebuild -list -project App.xcodeproj || true
+
           echo "Using build target: ${BUILD_CMD[*]}"
           "${BUILD_CMD[@]}" \
             -configuration Release \
