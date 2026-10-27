@@ -7,8 +7,9 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { formatDuration, formatFileSize, humanize } from '@utils/helpers';
+import { formatDuration, formatFileSize, humanize, isAudioFile } from '@utils/helpers';
 import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader, PriorityBadge } from '@components/common/ui';
+import { VoiceTypingControl, VoiceMessageRecorder } from '@components/common/VoiceInput';
 import {
   HARDWARE_PRESET_SUB_CATEGORIES,
   HARDWARE_PRESET_ITEMS,
@@ -296,8 +297,31 @@ export default function CreateTicket() {
 
         {/* 4. Description */}
         <Field label="Description" required error={errors.description?.message} hint="What happened, what you expected, and any error messages you saw.">
-          <textarea className="input min-h-[140px]" placeholder="Enter ticket description..." {...register('description')} />
+          <div className="space-y-2">
+            <VoiceTypingControl
+              value={watch('description') || ''}
+              onChange={(newText) => setValue('description', newText, { shouldValidate: true })}
+              disabled={submitting}
+            />
+            <textarea
+              className="input min-h-[140px]"
+              placeholder="Enter ticket description or use 'Voice Type' to dictate..."
+              {...register('description')}
+            />
+          </div>
         </Field>
+
+        {/* Voice Message Recorder (Audio Note) */}
+        <VoiceMessageRecorder
+          disabled={submitting}
+          attachedVoiceFiles={files.filter((f) => isAudioFile(f.type, f.name))}
+          onAudioReady={(audioFile) => {
+            setFiles((prev) => [...prev, audioFile].slice(0, 10));
+          }}
+          onAudioRemoved={(fileName) => {
+            setFiles((prev) => prev.filter((f) => f.name !== fileName));
+          }}
+        />
 
         {/* 5. Attachments (Optional) */}
         <Field label="Attachments (Optional)" hint={`Optional. Up to 10 files, ${formatFileSize(MAX_FILE_SIZE)} each. Images, PDF, Word or text.`}>
@@ -313,9 +337,11 @@ export default function CreateTicket() {
           {files.length > 0 && (
             <ul className="mt-3 space-y-1">
               {files.map((f, i) => (
-                <li key={`${f.name}-${i}`} className="flex items-center justify-between text-xs sm:text-sm bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
-                  <span className="truncate font-medium text-gray-700">
-                    {f.name} <span className="text-gray-400 font-normal">· {formatFileSize(f.size)}</span>
+                <li key={`${f.name}-${i}`} className="flex items-center justify-between text-xs sm:text-sm bg-gray-50 dark:bg-slate-800 rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-700">
+                  <span className="truncate font-medium text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                    <span>{isAudioFile(f.type, f.name) ? '🎙️' : '📎'}</span>
+                    <span className="truncate">{f.name}</span>
+                    <span className="text-gray-400 font-normal">· {formatFileSize(f.size)}</span>
                   </span>
                   <button type="button" className="text-danger-600 hover:underline text-xs font-semibold shrink-0 ml-2" onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}>
                     Remove

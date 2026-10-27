@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { downloadBlob, formatDate, formatFileSize, formatRelativeTime, getFileIcon, humanize } from '@utils/helpers';
+import { downloadBlob, formatDate, formatFileSize, formatRelativeTime, getFileIcon, humanize, isAudioFile } from '@utils/helpers';
+import { AudioAttachmentPlayer, VoiceTypingControl } from '@components/common/VoiceInput';
 import ApprovalsPanel from '@components/tickets/ApprovalsPanel';
 import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';
@@ -312,21 +313,26 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
             ) : (
               <ul className="divide-y divide-gray-100">
                 {attachments.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <button className="flex items-center gap-3 min-w-0 text-left hover:text-primary-700" onClick={() => onDownload(a)}>
-                      <span className="text-xl">{getFileIcon(a.mimeType)}</span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium truncate">{a.originalName}</span>
-                        <span className="block text-xs text-gray-500">{formatFileSize(a.size)} · {fullName(a.user)} · {formatRelativeTime(a.createdAt)}</span>
-                      </span>
-                    </button>
-                    {(a.userId === user?.id || isAdmin) && (
-                      <button
-                        className="text-xs text-danger-600 hover:underline shrink-0"
-                        onClick={() => run('att-' + a.id, () => api.deleteAttachment(ticket.id, a.id), 'Attachment removed')}
-                      >
-                        Remove
+                  <li key={a.id} className="flex flex-col gap-2 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <button className="flex items-center gap-3 min-w-0 text-left hover:text-primary-700" onClick={() => onDownload(a)}>
+                        <span className="text-xl">{getFileIcon(a.mimeType, a.originalName)}</span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium truncate">{a.originalName}</span>
+                          <span className="block text-xs text-gray-500">{formatFileSize(a.size)} · {fullName(a.user)} · {formatRelativeTime(a.createdAt)}</span>
+                        </span>
                       </button>
+                      {(a.userId === user?.id || isAdmin) && (
+                        <button
+                          className="text-xs text-danger-600 hover:underline shrink-0"
+                          onClick={() => run('att-' + a.id, () => api.deleteAttachment(ticket.id, a.id), 'Attachment removed')}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {isAudioFile(a.mimeType, a.originalName) && (
+                      <AudioAttachmentPlayer ticketId={ticket.id} attachment={a} />
                     )}
                   </li>
                 ))}
@@ -366,6 +372,11 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
 
             {canComment ? (
               <div className="p-4 border-t border-gray-200 space-y-3">
+                <VoiceTypingControl
+                  value={comment}
+                  onChange={(newVal) => setComment(newVal)}
+                  disabled={busy === 'comment'}
+                />
                 <textarea
                   className="input min-h-[100px]"
                   placeholder={internal ? 'Write an internal note (only staff can see this)...' : 'Write a reply...'}

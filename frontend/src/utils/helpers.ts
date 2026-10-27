@@ -175,7 +175,18 @@ export function isPDFFile(mimeType: string): boolean {
   return mimeType === 'application/pdf';
 }
 
-export function getFileIcon(mimeType: string): string {
+export function isAudioFile(mimeType?: string, fileName?: string): boolean {
+  if (!mimeType && !fileName) return false;
+  if (mimeType && mimeType.toLowerCase().startsWith('audio/')) return true;
+  if (fileName) {
+    const ext = fileName.toLowerCase().split('.').pop();
+    if (['webm', 'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext || '')) return true;
+  }
+  return false;
+}
+
+export function getFileIcon(mimeType: string, fileName?: string): string {
+  if (isAudioFile(mimeType, fileName)) return '🎙️';
   if (isImageFile(mimeType)) return '🖼️';
   if (isPDFFile(mimeType)) return '📄';
   if (mimeType.includes('word') || mimeType.includes('document')) return '📝';

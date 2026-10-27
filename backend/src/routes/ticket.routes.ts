@@ -22,6 +22,16 @@ const DEFAULT_ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/zip',
   'application/x-zip-compressed',
+  'audio/webm',
+  'audio/ogg',
+  'audio/wav',
+  'audio/wave',
+  'audio/x-wav',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/aac',
 ];
 const configuredTypes = config.upload.allowedTypes.filter(Boolean);
 const allowedMimeTypes = configuredTypes.length > 0 ? configuredTypes : DEFAULT_ALLOWED_MIME_TYPES;
@@ -30,8 +40,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.upload.maxSize, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (allowedMimeTypes.includes(file.mimetype.toLowerCase())) return cb(null, true);
-    cb(new Error(`File type ${file.mimetype} is not allowed. Supported formats: Images, PDF, Office Documents, Text, ZIP`));
+    const mime = file.mimetype.toLowerCase().split(';')[0].trim();
+    if (mime.startsWith('audio/') || allowedMimeTypes.includes(mime)) return cb(null, true);
+    cb(new Error(`File type ${file.mimetype} is not allowed. Supported formats: Images, PDF, Office Documents, Text, Audio, ZIP`));
   },
 });
 
