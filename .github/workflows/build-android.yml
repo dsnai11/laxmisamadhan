@@ -13,6 +13,8 @@ jobs:
   build-android:
     name: Build Android APK & AAB
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -105,3 +107,18 @@ jobs:
           path: build-artifacts/LaxmiSamadhan-Debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Android APK & AAB to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: latest-mobile-build
+          name: "Laxmi Samadhan Latest Mobile Build (APK & AAB)"
+          draft: false
+          prerelease: false
+          files: |
+            build-artifacts/LaxmiSamadhan-PlayStore-v1.2.aab
+            build-artifacts/LaxmiSamadhan-Release-v1.2.apk
+            build-artifacts/LaxmiSamadhan-Debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
