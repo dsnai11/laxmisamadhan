@@ -17,6 +17,7 @@
     "@capacitor/ios": "^8.5.3",
     "@capacitor/keyboard": "^8.0.6",
     "@capacitor/local-notifications": "^8.3.1",
+    "@capgo/capacitor-native-biometric": "^8.9.1",
     "@headlessui/react": "^1.7.18",
     "@heroicons/react": "^2.1.1",
     "@hookform/resolvers": "^3.3.4",

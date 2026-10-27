@@ -6,6 +6,9 @@ import { useAuth } from '@context/AuthContext';
 import { formatDate, humanize } from '@utils/helpers';
 import { Avatar, Field, getErrorMessage, PageHeader } from '@components/common/ui';
 import { PASSWORD_HINT, passwordSchema } from '@utils/validation';
+import biometricService, { BiometricInfo, SavedUserProfile } from '@services/biometric.service';
+import { BiometricSetupModal } from '@components/auth/BiometricQuickAuth';
+import { FingerPrintIcon } from '@heroicons/react/24/outline';
 
 export default function Profile() {
   const { user, updateProfile } = useAuth();
@@ -14,8 +17,17 @@ export default function Profile() {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [changing, setChanging] = useState(false);
 
+  // Biometric & Quick PIN states
+  const [bioProfile, setBioProfile] = useState<SavedUserProfile | null>(null);
+  const [bioInfo, setBioInfo] = useState<BiometricInfo | null>(null);
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
+
   useEffect(() => {
-    if (user) setForm({ firstName: user.firstName || '', lastName: user.lastName || '', phone: user.phone || '' });
+    if (user) {
+      setForm({ firstName: user.firstName || '', lastName: user.lastName || '', phone: user.phone || '' });
+    }
+    setBioProfile(biometricService.getSavedProfile());
+    biometricService.getBiometricInfo().then(setBioInfo);
   }, [user]);
 
   if (!user) return null;
@@ -72,6 +84,59 @@ export default function Profile() {
         <div className="flex justify-end"><button className="btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving...' : 'Save changes'}</button></div>
       </div>
 
+      {/* Biometric & Quick PIN Access */}
+      <div className="card p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <FingerPrintIcon className="w-5 h-5 text-rose-600" />
+              <span>Biometric & Quick PIN Login</span>
+            </h2>
+            <p className="text-sm text-gray-600">
+              Unlock the mobile app instantly with Face ID, Fingerprint, or a 4-digit PIN.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSetupModalOpen(true)}
+            className="btn-primary btn-sm whitespace-nowrap self-start sm:self-auto"
+          >
+            {bioProfile?.hasPin ? 'Change PIN / Biometrics' : 'Set Up Quick Login'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
+          <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between">
+            <span className="text-gray-600">{bioInfo?.biometryLabel || 'Face ID / Fingerprint'}</span>
+            <span className={`px-2 py-0.5 rounded font-semibold ${bioProfile?.biometricEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+              {bioProfile?.biometricEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between">
+            <span className="text-gray-600">Quick PIN</span>
+            <span className={`px-2 py-0.5 rounded font-semibold ${bioProfile?.hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+              {bioProfile?.hasPin ? 'Configured (4-digit)' : 'Not set'}
+            </span>
+          </div>
+        </div>
+
+        {bioProfile && (bioProfile.hasPin || bioProfile.biometricEnabled) && (
+          <div className="pt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={async () => {
+                await biometricService.clearBiometricsAndPin();
+                setBioProfile(null);
+                toast.success('Quick PIN & Biometrics removed from this device');
+              }}
+              className="text-xs text-danger-600 hover:underline font-medium"
+            >
+              Remove Quick Access from this device
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="card p-6 space-y-4">
         <h2 className="font-semibold text-gray-900">Change password</h2>
         <Field label="Current password"><input type="password" className="input" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></Field>
@@ -87,6 +152,19 @@ export default function Profile() {
         </div>
         <Link to="/mfa-setup" className="btn-secondary whitespace-nowrap">{user.mfaEnabled ? 'Manage' : 'Set up'}</Link>
       </div>
+
+      {setupModalOpen && (
+        <BiometricSetupModal
+          isOpen={setupModalOpen}
+          onClose={() => setSetupModalOpen(false)}
+          onSuccess={() => {
+            setSetupModalOpen(false);
+            setBioProfile(biometricService.getSavedProfile());
+          }}
+          employeeId={user.employeeId || user.email}
+          userName={`${user.firstName} ${user.lastName}`.trim()}
+        />
+      )}
     </div>
   );
 }
