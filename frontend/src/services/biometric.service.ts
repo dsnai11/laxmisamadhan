@@ -201,13 +201,15 @@ class BiometricService {
     const { employeeId, password, userName, enableBiometric, pin } = params;
     const isNative = Capacitor.isNativePlatform();
 
-    // 1. Save user profile info
+    // 1. Save user profile info (preserve existing PIN/settings if not overriding)
+    const existing = this.getSavedProfile();
     const info = await this.getBiometricInfo();
+    const hasPin = (!!pin && pin.length >= 4) || (existing?.hasPin && !!localStorage.getItem(KEY_PIN_HASH));
     const profile: SavedUserProfile = {
       employeeId,
-      userName: userName || employeeId,
+      userName: userName || existing?.userName || employeeId,
       biometricEnabled: enableBiometric,
-      hasPin: !!pin && pin.length >= 4,
+      hasPin: !!hasPin,
       biometryLabel: info.biometryLabel,
     };
     localStorage.setItem(KEY_SAVED_USER, JSON.stringify(profile));
@@ -238,14 +240,30 @@ class BiometricService {
       }
     }
 
-    // 4. Secure local encrypted payload
+    // 4. Secure local encrypted payload (preserve existing stored password if new one is empty)
     const deviceSecret = `lifc_${employeeId}_secure_key`;
+    let effectivePassword = (password || '').trim();
+    if (!effectivePassword) {
+      const existingEncrypted = localStorage.getItem(KEY_SECURE_PAYLOAD);
+      if (existingEncrypted) {
+        try {
+          const dec = decryptPayload(existingEncrypted, deviceSecret);
+          const parsed = JSON.parse(dec);
+          if (parsed && parsed.password) {
+            effectivePassword = parsed.password;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     const payloadJson = JSON.stringify({
       employeeId,
-      password: (password || '').trim(),
+      password: effectivePassword,
       accessToken,
       refreshToken,
-      userName: userName || employeeId,
+      userName: userName || existing?.userName || employeeId,
       ts: Date.now(),
     });
     const encrypted = encryptPayload(payloadJson, deviceSecret);

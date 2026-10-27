@@ -167,6 +167,17 @@ export default function LoginPage() {
         setTempCredentials({ employeeId: data.employeeId, password: data.password });
         setSetupModalOpen(true);
       } else {
+        // Automatically save password into native Keychain/KeyStore for 1-tap future unlocks
+        try {
+          await biometricService.enableBiometricAndPin({
+            employeeId: data.employeeId.trim(),
+            password: data.password.trim(),
+            userName: profile.userName,
+            enableBiometric: profile.biometricEnabled,
+          });
+        } catch (e) {
+          console.warn('Could not update stored credentials:', e);
+        }
         navigate('/');
       }
     } catch (error: any) {
