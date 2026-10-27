@@ -85,7 +85,9 @@ class ApiService {
             return this.client(originalRequest);
           } catch (refreshError) {
             this.clearAuth();
-            window.location.href = '/login';
+            if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+              window.location.href = '/login';
+            }
             return Promise.reject(refreshError);
           }
         }

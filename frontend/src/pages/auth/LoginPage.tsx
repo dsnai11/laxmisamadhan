@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -60,6 +60,8 @@ export default function LoginPage() {
     defaultValues: { rememberMe: true },
   });
 
+  const hasAutoPromptedRef = useRef(false);
+
   // Check saved profile and biometrics on load
   useEffect(() => {
     const profile = biometricService.getSavedProfile();
@@ -68,11 +70,12 @@ export default function LoginPage() {
 
     if (profile && (profile.biometricEnabled || profile.hasPin)) {
       setLoginMode('quick');
-      // If biometric enabled on native phone, prompt automatically after a smooth delay
-      if (profile.biometricEnabled && Capacitor.isNativePlatform()) {
+      // Prompt automatically only once per component lifecycle
+      if (profile.biometricEnabled && Capacitor.isNativePlatform() && !hasAutoPromptedRef.current) {
+        hasAutoPromptedRef.current = true;
         const timer = setTimeout(() => {
           handleBiometricUnlock();
-        }, 400);
+        }, 500);
         return () => clearTimeout(timer);
       }
     }
@@ -90,13 +93,22 @@ export default function LoginPage() {
     if (creds.accessToken) {
       localStorage.setItem('accessToken', creds.accessToken);
       if (creds.refreshToken) localStorage.setItem('refreshToken', creds.refreshToken);
-      await initializeAuth();
-      toast.success(`Welcome back, ${savedProfile?.userName || creds.employeeId}!`);
-      navigate('/');
-      return;
+      try {
+        const user = await api.getMe();
+        if (!user) throw new Error('Session invalid');
+        await initializeAuth();
+        toast.success(`Welcome back, ${user.name || creds.employeeId}!`);
+        navigate('/');
+        return;
+      } catch (err) {
+        console.warn('Token session restoration failed:', err);
+        setLoginMode('password');
+        throw new Error('Quick session expired. Please enter your corporate password.');
+      }
     }
 
-    throw new Error('Please log in with your password to continue.');
+    setLoginMode('password');
+    throw new Error('Please enter your password to continue.');
   };
 
   // Biometric Unlock (Face ID / Fingerprint)
@@ -112,7 +124,8 @@ export default function LoginPage() {
       await performUnlock(creds);
     } catch (err: any) {
       console.warn('Biometric login failed:', err);
-      toast.error('Biometric authentication failed. Please enter your PIN or password.');
+      setLoginError(err.message || 'Biometric authentication failed.');
+      toast.error(err.message || 'Biometric authentication failed. Please enter your PIN or password.');
     } finally {
       setIsLoading(false);
     }
@@ -133,7 +146,8 @@ export default function LoginPage() {
       await performUnlock(creds);
     } catch (err: any) {
       setQuickPin('');
-      toast.error('PIN login failed. Please try again or use your password.');
+      setLoginError(err.message || 'PIN login failed.');
+      toast.error(err.message || 'PIN login failed. Please try again or use your password.');
     } finally {
       setIsLoading(false);
     }
