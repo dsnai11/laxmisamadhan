@@ -127,13 +127,15 @@ export const departmentSchema = z.object({
     holidays: z.array(z.string()).optional(),
   }).optional(),
   escalationRules: z.array(z.object({
-    trigger: z.enum(['response', 'resolution']),
-    timeBeforeMins: z.number().int().positive(),
+    level: z.string().optional(),
+    trigger: z.enum(['response', 'resolution']).default('resolution'),
+    timeBeforeMins: z.number().int().nonnegative().default(0),
     action: z.enum(['notify', 'escalate', 'reassign']),
     notifyUserIds: z.array(z.string().uuid()).optional(),
-    escalateToUserId: z.string().uuid().optional(),
-    reassignToUserId: z.string().uuid().optional(),
-  })).optional(),
+    escalateToUserId: z.string().uuid().optional().nullable(),
+    reassignToUserId: z.string().uuid().optional().nullable(),
+    description: z.string().optional(),
+  })).optional().nullable(),
 });
 
 export const updateDepartmentSchema = departmentSchema.partial();

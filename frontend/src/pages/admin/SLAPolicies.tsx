@@ -59,6 +59,20 @@ export default function AdminSLAPolicies() {
   const [filterDept, setFilterDept] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
 
+  const { data: usersData } = useQuery({
+    queryKey: ['users-for-escalation'],
+    queryFn: () => api.getUsers({ limit: 100, status: 'ACTIVE' }),
+    enabled: !!editing,
+  });
+  const availableStaff: any[] = usersData?.data || [];
+
+  const [enableEscalation, setEnableEscalation] = useState(false);
+  const [escalationAction, setEscalationAction] = useState<'escalate' | 'notify' | 'both'>('escalate');
+  const [escalateToUserId, setEscalateToUserId] = useState('');
+  const [notifyUserIds, setNotifyUserIds] = useState<string[]>([]);
+  const [triggerType, setTriggerType] = useState<'resolution' | 'response'>('resolution');
+  const [timeBeforeMins, setTimeBeforeMins] = useState(0);
+
   const activeDeptId = isDeptHeadOrLead ? (user?.departmentId || '') : form.departmentId;
   const { data: deptCategoryConfigs } = useQuery<any[]>({
     queryKey: ['category-configs', activeDeptId],
@@ -81,6 +95,12 @@ export default function AdminSLAPolicies() {
       ...blank,
       departmentId: isDeptHeadOrLead ? (user?.departmentId || '') : '',
     });
+    setEnableEscalation(false);
+    setEscalationAction('escalate');
+    setEscalateToUserId('');
+    setNotifyUserIds([]);
+    setTriggerType('resolution');
+    setTimeBeforeMins(0);
     setEditing('new');
   };
   const openEdit = (p: any) => {
@@ -96,6 +116,27 @@ export default function AdminSLAPolicies() {
       businessHoursOnly: !!p.businessHoursOnly,
       excludesWeekends: !!p.excludesWeekends,
     });
+    const rules = Array.isArray(p.escalationRules) ? p.escalationRules : [];
+    if (rules.length > 0) {
+      const primary = rules[0];
+      setEnableEscalation(true);
+      const targetUser = primary.escalateToUserId || primary.reassignToUserId || '';
+      const notifiers = Array.isArray(primary.notifyUserIds) ? primary.notifyUserIds : [];
+      setEscalateToUserId(targetUser);
+      setNotifyUserIds(notifiers);
+      setTriggerType(primary.trigger || 'resolution');
+      setTimeBeforeMins(primary.timeBeforeMins ?? 0);
+      if (targetUser && notifiers.length > 0) setEscalationAction('both');
+      else if (targetUser) setEscalationAction('escalate');
+      else setEscalationAction('notify');
+    } else {
+      setEnableEscalation(false);
+      setEscalationAction('escalate');
+      setEscalateToUserId('');
+      setNotifyUserIds([]);
+      setTriggerType('resolution');
+      setTimeBeforeMins(0);
+    }
     setEditing(p);
   };
 
@@ -103,6 +144,36 @@ export default function AdminSLAPolicies() {
     if (!form.name.trim()) return toast.error('Give the policy a name');
     if (!(form.responseTimeMins > 0) || !(form.resolutionTimeMins > 0)) return toast.error('Times must be greater than zero');
     if (form.resolutionTimeMins < form.responseTimeMins) return toast.error('Resolution time cannot be shorter than response time');
+    
+    let escalationRules: any[] | null = null;
+    if (enableEscalation) {
+      escalationRules = [];
+      if (escalationAction === 'escalate' || escalationAction === 'both') {
+        if (!escalateToUserId) {
+          return toast.error('Please select an engineer or lead to reassign/escalate to.');
+        }
+        escalationRules.push({
+          action: 'escalate',
+          trigger: triggerType,
+          timeBeforeMins: Number(timeBeforeMins) || 0,
+          escalateToUserId,
+          notifyUserIds: escalationAction === 'both' && notifyUserIds.length > 0 ? notifyUserIds : undefined,
+          description: `Auto-escalate to senior engineer on ${triggerType} breach`,
+        });
+      } else if (escalationAction === 'notify') {
+        if (notifyUserIds.length === 0) {
+          return toast.error('Please select at least one manager to notify.');
+        }
+        escalationRules.push({
+          action: 'notify',
+          trigger: triggerType,
+          timeBeforeMins: Number(timeBeforeMins) || 0,
+          notifyUserIds,
+          description: `Alert designated managers on ${triggerType} breach`,
+        });
+      }
+    }
+
     setSaving(true);
     try {
       const body: any = {
@@ -116,6 +187,7 @@ export default function AdminSLAPolicies() {
         resolutionTimeMins: Number(form.resolutionTimeMins),
         businessHoursOnly: form.businessHoursOnly,
         excludesWeekends: form.excludesWeekends,
+        escalationRules: escalationRules,
       };
       if (editing === 'new') await api.createSLAPolicy(body);
       else await api.updateSLAPolicy(editing.id, body);
@@ -237,7 +309,7 @@ export default function AdminSLAPolicies() {
         ) : (
           <div className="table-container">
             <table className="table">
-              <thead><tr><th>Policy</th><th>Applies to</th><th>Priority</th><th>Response</th><th>Resolution</th><th>Hours</th>{(isSuperOrAdmin || isDeptHeadOrLead) && <th />}</tr></thead>
+              <thead><tr><th>Policy</th><th>Applies to</th><th>Priority</th><th>Response</th><th>Resolution</th><th>Hours</th><th>Escalation</th>{(isSuperOrAdmin || isDeptHeadOrLead) && <th />}</tr></thead>
               <tbody>
                 {list.map((p) => (
                   <tr key={p.id}>
@@ -255,6 +327,28 @@ export default function AdminSLAPolicies() {
                     <td className="text-sm">{formatDuration(p.responseTimeMins)}</td>
                     <td className="text-sm">{formatDuration(p.resolutionTimeMins)}</td>
                     <td className="text-sm text-gray-500">{p.businessHoursOnly ? 'Business hours' : '24/7'}</td>
+                    <td className="text-xs">
+                      {p.escalationRules && p.escalationRules.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {p.escalationRules[0].escalateToUserId ? (
+                            <span className="inline-flex items-center gap-1 font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 w-fit">
+                              ⚡ Reassign on breach
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 w-fit">
+                              🔔 Alert on breach
+                            </span>
+                          )}
+                          {p.escalationRules[0].timeBeforeMins > 0 && (
+                            <span className="text-[10px] text-gray-400">
+                              Trigger: {p.escalationRules[0].timeBeforeMins}m before
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">Standard Auto</span>
+                      )}
+                    </td>
                     {(isSuperOrAdmin || isDeptHeadOrLead) && (
                       <td className="text-right whitespace-nowrap">
                         {canEditPolicy(p) ? (
@@ -349,6 +443,120 @@ export default function AdminSLAPolicies() {
           </Field>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary-600" checked={form.businessHoursOnly} onChange={(e) => setForm({ ...form, businessHoursOnly: e.target.checked })} /> Count business hours only</label>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary-600" checked={form.excludesWeekends} onChange={(e) => setForm({ ...form, excludesWeekends: e.target.checked })} /> Exclude weekends</label>
+
+          {/* Escalation Rules Section */}
+          <div className="md:col-span-2 border-t border-gray-200 pt-4 mt-2">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                  <span className="text-base">⚡</span> Escalation Targets on SLA Breach
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Automatically reassign ticket or alert senior leadership when this policy's SLA is breached.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={enableEscalation}
+                  onChange={(e) => setEnableEscalation(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+              </label>
+            </div>
+
+            {enableEscalation && (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Escalation Action">
+                    <select
+                      className="input"
+                      value={escalationAction}
+                      onChange={(e: any) => setEscalationAction(e.target.value)}
+                    >
+                      <option value="escalate">Reassign Ticket to Senior Engineer / Lead</option>
+                      <option value="notify">Alert Specific Managers</option>
+                      <option value="both">Reassign Ticket & Alert Managers</option>
+                    </select>
+                  </Field>
+
+                  <Field label="Trigger Timing">
+                    <select
+                      className="input"
+                      value={timeBeforeMins}
+                      onChange={(e) => setTimeBeforeMins(Number(e.target.value))}
+                    >
+                      <option value={0}>At Exact SLA Breach (0 mins remaining)</option>
+                      <option value={15}>15 Minutes Before Breach</option>
+                      <option value={30}>30 Minutes Before Breach</option>
+                      <option value={60}>1 Hour Before Breach</option>
+                    </select>
+                  </Field>
+                </div>
+
+                {(escalationAction === 'escalate' || escalationAction === 'both') && (
+                  <Field label="Reassign To (Senior Engineer / Lead)" hint="When breached, the ticket will be immediately reassigned to this user and elevated to CRITICAL priority.">
+                    <select
+                      className="input"
+                      value={escalateToUserId}
+                      onChange={(e) => setEscalateToUserId(e.target.value)}
+                    >
+                      <option value="">Select senior engineer, lead, or manager...</option>
+                      {availableStaff.map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName} ({u.role?.replace(/_/g, ' ')}){u.department?.name ? ` — ${u.department.name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+
+                {(escalationAction === 'notify' || escalationAction === 'both') && (
+                  <Field label="Managers to Alert" hint="These managers will receive an urgent notification on SLA breach.">
+                    <select
+                      className="input"
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val && !notifyUserIds.includes(val)) {
+                          setNotifyUserIds([...notifyUserIds, val]);
+                        }
+                      }}
+                    >
+                      <option value="">+ Add manager to alert list...</option>
+                      {availableStaff
+                        .filter((u: any) => !notifyUserIds.includes(u.id))
+                        .map((u: any) => (
+                          <option key={u.id} value={u.id}>
+                            {u.firstName} {u.lastName} ({u.role?.replace(/_/g, ' ')})
+                          </option>
+                        ))}
+                    </select>
+                    {notifyUserIds.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {notifyUserIds.map((uid) => {
+                          const matched = availableStaff.find((u: any) => u.id === uid);
+                          return (
+                            <span key={uid} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                              {matched ? `${matched.firstName} ${matched.lastName}` : uid}
+                              <button
+                                type="button"
+                                className="text-primary-600 hover:text-primary-900"
+                                onClick={() => setNotifyUserIds(notifyUserIds.filter((id) => id !== uid))}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Field>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 
