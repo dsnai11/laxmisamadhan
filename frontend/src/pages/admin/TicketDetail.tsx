@@ -9,11 +9,14 @@ import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';
 import TicketContactCards from '@components/tickets/TicketContactCards';
 import AssignedAgentTopTile from '@components/tickets/AssignedAgentTopTile';
+import ApprovalsPanel from '@components/tickets/ApprovalsPanel';
+import { useAuth } from '@context/AuthContext';
 
 export default function AdminTicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   const [comment, setComment] = useState('');
   const [isInternal, setIsInternal] = useState(false);
@@ -205,19 +208,13 @@ export default function AdminTicketDetail() {
 
               {/* Approvals tab */}
               {activeTab === 'approvals' && (
-                <div className="space-y-3">
-                  {(ticket.approvals || []).length === 0 && <p className="text-sm text-gray-500 text-center py-4">No approvals.</p>}
-                  {(ticket.approvals || []).map((a: any) => (
-                    <div key={a.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium">{a.title}</p>
-                        <p className="text-xs text-gray-500">Approver: {a.approver?.firstName} {a.approver?.lastName}</p>
-                      </div>
-                      <span className={cn('badge', a.status === 'APPROVED' ? 'badge-success' : a.status === 'REJECTED' ? 'badge-danger' : 'badge-warning')}>
-                        {a.status}
-                      </span>
-                    </div>
-                  ))}
+                <div className="space-y-4">
+                  <ApprovalsPanel
+                    ticket={ticket}
+                    currentUserId={user?.id}
+                    canRequest={true}
+                    isAdmin={true}
+                  />
                 </div>
               )}
 

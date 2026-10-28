@@ -111,9 +111,33 @@ class ApprovalService {
     return approval;
   }
 
-  async getPendingApprovals(userId: string, params: { page: number; limit: number }): Promise<any> {
+  async getEligibleApprovers(departmentId?: string): Promise<any[]> {
+    const approvers = await prisma.user.findMany({
+      where: {
+        status: 'ACTIVE',
+        role: { in: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'] },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        departmentId: true,
+        department: { select: { id: true, name: true } },
+      },
+      orderBy: [
+        { role: 'asc' },
+        { firstName: 'asc' },
+      ],
+    });
+    return approvers;
+  }
+
+  async getPendingApprovals(userId: string, params: { page: number; limit: number; all?: boolean }, userRole?: string): Promise<any> {
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
     const where: Prisma.ApprovalWhereInput = {
-      approverId: userId,
+      ...(isAdmin && params.all ? {} : { approverId: userId }),
       status: ApprovalStatus.PENDING,
       OR: [
         { expiresAt: null },
@@ -140,14 +164,15 @@ class ApprovalService {
     return { approvals, total, page: params.page, totalPages: Math.ceil(total / params.limit) };
   }
 
-  async respondToApproval(approvalId: string, approverId: string, status: 'APPROVED' | 'REJECTED', response?: string): Promise<any> {
+  async respondToApproval(approvalId: string, approverId: string, status: 'APPROVED' | 'REJECTED', response?: string, userRole?: string): Promise<any> {
     const approval = await prisma.approval.findUnique({
       where: { id: approvalId },
       include: { ticket: true, requester: true, approver: true },
     });
 
     if (!approval) throw new Error('Approval not found');
-    if (approval.approverId !== approverId) throw new Error('Not authorized');
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    if (approval.approverId !== approverId && !isAdmin) throw new Error('Not authorized');
     if (approval.status !== ApprovalStatus.PENDING) throw new Error('Approval already processed');
     if (approval.expiresAt && approval.expiresAt < new Date()) throw new Error('Approval expired');
 
@@ -246,14 +271,17 @@ class ApprovalService {
     return updatedApproval;
   }
 
-  async cancelApproval(approvalId: string, userId: string): Promise<void> {
+  async cancelApproval(approvalId: string, userId: string, userRole?: string): Promise<void> {
     const approval = await prisma.approval.findUnique({
       where: { id: approvalId },
       include: { ticket: true },
     });
 
     if (!approval) throw new Error('Approval not found');
-    if (approval.requesterId !== userId && approval.approverId !== userId) throw new Error('Not authorized');
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    if (!isAdmin && approval.requesterId !== userId && approval.approverId !== userId) {
+      throw new Error('Not authorized');
+    }
     if (approval.status !== ApprovalStatus.PENDING) throw new Error('Cannot cancel processed approval');
 
     await prisma.approval.update({

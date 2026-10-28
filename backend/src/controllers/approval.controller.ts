@@ -36,9 +36,10 @@ export const getPendingApprovals = asyncHandler(async (req: AuthenticatedRequest
   const params = {
     page: parseInt(req.query.page as string) || 1,
     limit: parseInt(req.query.limit as string) || 20,
+    all: req.query.all === 'true',
   };
 
-  const result = await approvalService.getPendingApprovals(req.user!.userId, params);
+  const result = await approvalService.getPendingApprovals(req.user!.userId, params, req.user!.role);
 
   res.json({
     success: true,
@@ -46,10 +47,19 @@ export const getPendingApprovals = asyncHandler(async (req: AuthenticatedRequest
   });
 });
 
+export const getEligibleApprovers = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const approvers = await approvalService.getEligibleApprovers(req.query.departmentId as string | undefined);
+
+  res.json({
+    success: true,
+    data: approvers,
+  });
+});
+
 export const respondToApproval = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { status, response } = req.body;
   
-  const approval = await approvalService.respondToApproval(req.params.id, req.user!.userId, status, response);
+  const approval = await approvalService.respondToApproval(req.params.id, req.user!.userId, status, response, req.user!.role);
 
   res.json({
     success: true,
@@ -59,7 +69,7 @@ export const respondToApproval = asyncHandler(async (req: AuthenticatedRequest, 
 });
 
 export const cancelApproval = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  await approvalService.cancelApproval(req.params.id, req.user!.userId);
+  await approvalService.cancelApproval(req.params.id, req.user!.userId, req.user!.role);
 
   res.json({
     success: true,

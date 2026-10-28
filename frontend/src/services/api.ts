@@ -712,6 +712,13 @@ class ApiService {
     return response.data.data!;
   }
 
+  async getEligibleApprovers(departmentId?: string): Promise<User[]> {
+    const response = await this.client.get<ApiResponse<User[]>>('/approvals/eligible-approvers', {
+      params: departmentId ? { departmentId } : undefined,
+    });
+    return response.data.data || [];
+  }
+
   async getPendingApprovals(params?: Record<string, any>): Promise<PaginatedResponse<Approval>> {
     const response = await this.client.get<ApiResponse<PaginatedResponse<Approval>>>('/approvals/pending', { params });
     return toPage<any>(response.data.data, 'approvals') as any;
