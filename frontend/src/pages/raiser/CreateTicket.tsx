@@ -12,9 +12,7 @@ import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader, Prior
 import { VoiceTypingControl, VoiceMessageRecorder } from '@components/common/VoiceInput';
 import {
   HARDWARE_PRESET_SUB_CATEGORIES,
-  HARDWARE_PRESET_ITEMS,
   SOFTWARE_PRESET_SUB_CATEGORIES,
-  SOFTWARE_PRESET_ITEMS,
 } from '@components/admin/CategoryConfigManager';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -23,7 +21,6 @@ const schema = z.object({
   departmentId: z.string().trim().min(1, 'Please select a department'),
   category: z.string().trim().min(1, 'Please select a category'),
   subCategory: z.string().trim().min(1, 'Please select a System / Module (Sub Category)'),
-  subIssue: z.string().trim().min(1, 'Please select or enter a Sub-Issue (Specific Problem)'),
   title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200, 'Title is too long'),
   description: z.string().trim().min(5, 'Please enter a description (at least 5 characters)').max(10000),
 });
@@ -46,22 +43,16 @@ export default function CreateTicket() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { departmentId: user?.departmentId || '', category: '', subCategory: '', subIssue: '', title: '', description: '' },
+    defaultValues: { departmentId: user?.departmentId || '', category: '', subCategory: '', title: '', description: '' },
   });
 
   const watchedDept = watch('departmentId');
   const watchedCategory = watch('category');
   const watchedSubCategory = watch('subCategory');
-  const watchedSubIssue = watch('subIssue');
 
   useEffect(() => {
     setValue('subCategory', '');
-    setValue('subIssue', '');
   }, [watchedDept, watchedCategory, setValue]);
-
-  useEffect(() => {
-    setValue('subIssue', '');
-  }, [watchedSubCategory, setValue]);
 
   const { data: deptCategoryConfigs } = useQuery<any[]>({
     queryKey: ['category-configs', watchedDept],
@@ -102,22 +93,11 @@ export default function CreateTicket() {
     ? categoryFormFields.subCategories
     : fallbackSubCats;
 
-  const fallbackSubIssuesMap = isSwDept
-    ? SOFTWARE_PRESET_ITEMS
-    : isHwDept
-    ? HARDWARE_PRESET_ITEMS
-    : {};
-
-  const dynamicSubIssues: string[] = watchedSubCategory
-    ? (categoryFormFields.subIssues?.[watchedSubCategory] || categoryFormFields.items?.[watchedSubCategory] || fallbackSubIssuesMap[watchedSubCategory] || [])
-    : [];
-
   const matchingSLA = (slaPolicies || []).find((p: any) => {
     if (!p.isActive) return false;
     const matchesDept = !p.departmentId || p.departmentId === watchedDept;
     if (!matchesDept) return false;
     const sub = p.subCategory?.toLowerCase();
-    if (watchedSubIssue && sub === watchedSubIssue.toLowerCase()) return true;
     if (watchedSubCategory && sub === watchedSubCategory.toLowerCase()) return true;
     return false;
   });
@@ -139,8 +119,6 @@ export default function CreateTicket() {
         departmentId: values.departmentId,
         category: values.category as any,
         subCategory: values.subCategory,
-        subIssue: values.subIssue,
-        item: values.subIssue,
         title: values.title,
         description: values.description,
         priority: 'MEDIUM',
@@ -230,41 +208,6 @@ export default function CreateTicket() {
             </select>
           </Field>
         </div>
-
-        {/* Sub-Issue (Specific Problem) */}
-        <Field
-          label="Sub-Issue (Specific Problem)"
-          required
-          error={errors.subIssue?.message}
-          hint={
-            !watchedSubCategory
-              ? 'Please select a System / Module above first.'
-              : dynamicSubIssues.length > 0
-              ? `Select specific problem related to "${watchedSubCategory}"`
-              : `Enter specific problem under "${watchedSubCategory}"`
-          }
-        >
-          {!watchedSubCategory ? (
-            <select className="input cursor-not-allowed opacity-60" disabled>
-              <option value="">— Select a System / Module above first —</option>
-            </select>
-          ) : dynamicSubIssues.length > 0 ? (
-            <select className="input" {...register('subIssue')}>
-              <option value="">Select Sub-Issue / Specific Problem...</option>
-              {dynamicSubIssues.map((si) => (
-                <option key={si} value={si}>
-                  {si}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              className="input"
-              placeholder={`Enter specific issue under "${watchedSubCategory}"...`}
-              {...register('subIssue')}
-            />
-          )}
-        </Field>
 
         {/* Dynamic SLA Guarantee Banner */}
         {matchingSLA && (

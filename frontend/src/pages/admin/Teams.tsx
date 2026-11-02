@@ -26,7 +26,7 @@ export default function AdminTeams() {
     <div className="space-y-6">
       <PageHeader
         title="Teams & Department Rules"
-        subtitle={isTeamLead ? "Manage your teams, members, and category sub-issues" : "Group agents and configure sub-categories & sub-issues for ticket routing"}
+        subtitle={isTeamLead ? "Manage your teams, members, and category routing" : "Group agents and configure sub-categories for ticket routing"}
         actions={
           isOrgWide ? (
             <select className="input" value={departmentId} onChange={(e) => setSelected(e.target.value)} aria-label="Department">
@@ -57,7 +57,7 @@ export default function AdminTeams() {
           }`}
           onClick={() => setActiveTab('categories')}
         >
-          Sub-Categories & Sub-Issues
+          Sub-Categories & Routing
         </button>
       </div>
 
