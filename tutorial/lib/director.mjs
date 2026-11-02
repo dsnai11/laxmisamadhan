@@ -127,9 +127,9 @@ export class Director {
     await sleep(800);
   }
 
-  async login({ email, password }) {
+  async login({ employeeId, email, password }) {
     const page = this.page;
-    await this.type(page.locator('#email'), email, { delay: 18 });
+    await this.type(page.locator('#employeeId'), employeeId ?? email, { delay: 40 });
     await this.type(page.locator('#password'), password, { delay: 18 });
     await this.click(page.locator('button[type=submit]'), { wait: 0 });
     await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20000 });

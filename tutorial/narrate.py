@@ -50,7 +50,10 @@ for line in lines:
     sf.write(wav, samples, rate)
     durations[line["id"]] = round(len(samples) / rate, 2)
     hashes[line["id"]] = key
-    print(f"{line['id']}: {durations[line['id']]}s")
+    print(f"{line['id']}: {durations[line['id']]}s", flush=True)
+    # Save after every clip so an interrupted run resumes where it stopped.
+    durations_file.write_text(json.dumps(durations, indent=2))
+    hashes_file.write_text(json.dumps(hashes, indent=2))
 
 durations_file.write_text(json.dumps(durations, indent=2))
 hashes_file.write_text(json.dumps(hashes, indent=2))

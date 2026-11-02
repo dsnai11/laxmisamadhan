@@ -8,7 +8,7 @@
 
   const css = `
     #tut-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; font-family: Inter, 'Noto Sans Devanagari', system-ui, sans-serif; }
-    #tut-badge { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: #111827e6; color: #fff;
+    #tut-badge { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); background: #111827e6; color: #fff;
       padding: 6px 16px; border-radius: 999px; font-size: 15px; font-weight: 600; letter-spacing: .02em; box-shadow: 0 4px 14px #0004; }
     #tut-badge b { color: #fca5a5; font-weight: 700; }
     #tut-caption { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: 78%;
