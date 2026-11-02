@@ -33,6 +33,8 @@ export interface LoginResult {
     departmentId: string | null;
     mfaEnabled: boolean;
     avatar: string | null;
+    canViewTeamBucket?: boolean;
+    mustResetPassword?: boolean;
   };
   tokens: {
     accessToken: string;
@@ -184,6 +186,7 @@ class AuthService {
         canViewTeamBucket: user.canViewTeamBucket || false,
         mfaEnabled: user.mfaEnabled,
         avatar: user.avatar,
+        mustResetPassword: user.mustResetPassword || false,
       },
       tokens,
     };
@@ -225,6 +228,7 @@ class AuthService {
       mfaEnabled: user.mfaEnabled,
       avatar: user.avatar,
       permissions,
+      mustResetPassword: user.mustResetPassword || false,
     };
   }
 
@@ -286,6 +290,30 @@ class AuthService {
     }
   }
 
+  async forceResetPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('User not found');
+
+    const isValid = await verifyPassword(currentPassword, user.passwordHash);
+    if (!isValid) throw new AppError('Current password is incorrect', 400, 'INVALID_PASSWORD');
+
+    if (currentPassword === newPassword) {
+      throw new AppError('New password must be different from your current password', 400, 'SAME_PASSWORD');
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        lastPasswordChange: new Date(),
+        mustResetPassword: false,
+      },
+    });
+
+    logger.info('Force password reset completed', { userId });
+  }
+
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -307,6 +335,7 @@ class AuthService {
       data: {
         passwordHash: newPasswordHash,
         lastPasswordChange: new Date(),
+        mustResetPassword: false,
       },
     });
 

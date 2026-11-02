@@ -15,6 +15,7 @@ router.post('/logout', authenticate, authController.logout);
 router.post('/forgot-password', authRateLimiter, validateBody(validators.forgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', authRateLimiter, validateBody(validators.resetPasswordSchema), authController.resetPassword);
 router.post('/change-password', authenticate, validateBody(validators.changePasswordSchema), authController.changePassword);
+router.post('/force-reset-password', authenticate, authController.forceResetPassword);
 router.post('/verify-email', validateBody(validators.verifyEmailSchema), authController.verifyEmail);
 
 router.post('/mfa/setup', authenticate, strictRateLimiter, authController.setupMFA);

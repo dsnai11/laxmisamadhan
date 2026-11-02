@@ -231,6 +231,10 @@ class ApiService {
     await this.client.post('/auth/change-password', { currentPassword, newPassword, confirmPassword: newPassword });
   }
 
+  async forceResetPassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.client.post('/auth/force-reset-password', { currentPassword, newPassword });
+  }
+
   async forgotPassword(identifierOrEmail: string): Promise<void> {
     const trimmed = (identifierOrEmail || '').trim();
     const isEmail = trimmed.includes('@');
