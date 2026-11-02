@@ -93,6 +93,22 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   });
 });
 
+export const forceResetPassword = asyncHandler(async (req: Request, res: Response) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user!.userId;
+
+  if (!currentPassword || !newPassword) {
+    throw new AppError('Current password and new password are required', 400, 'MISSING_FIELDS');
+  }
+
+  await authService.forceResetPassword(userId, currentPassword, newPassword);
+
+  res.json({
+    success: true,
+    message: 'Password reset successfully. You can now access the portal.',
+  });
+});
+
 export const forgotPassword = asyncHandler(async (req: Request, res: Response) => {
   const { employeeId, identifier, email } = req.body;
   const loginIdentifier = (employeeId || identifier || email)?.trim();

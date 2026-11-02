@@ -9,6 +9,7 @@ import ForgotPasswordPage from '@pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '@pages/auth/ResetPasswordPage';
 import MFASetupPage from '@pages/auth/MFASetupPage';
 import VerifyEmailPage from '@pages/auth/VerifyEmailPage';
+import ForceResetPassword from '@pages/auth/ForceResetPassword';
 
 // Admin pages
 import AdminDashboard from '@pages/admin/Dashboard';
@@ -60,6 +61,11 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
     return <Navigate to="/login" replace />;
   }
 
+  // Force password reset before any protected page
+  if (user?.mustResetPassword) {
+    return <Navigate to="/force-reset-password" replace />;
+  }
+
   if (allowedRoles && !hasRole(allowedRoles)) {
     return <Navigate to="/unauthorized" replace />;
   }
@@ -68,7 +74,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -76,6 +82,11 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-600 border-t-transparent"></div>
       </div>
     );
+  }
+
+  // Authenticated but must reset password — redirect them to force-reset, not back into the portal
+  if (isAuthenticated && user?.mustResetPassword) {
+    return <Navigate to="/force-reset-password" replace />;
   }
 
   if (isAuthenticated) {
@@ -148,6 +159,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
       <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
       <Route path="/verify-email" element={<PublicRoute><VerifyEmailPage /></PublicRoute>} />
+      <Route path="/force-reset-password" element={<ForceResetPassword />} />
       <Route path="/mfa-setup" element={<ProtectedRoute><MFASetupPage /></ProtectedRoute>} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 

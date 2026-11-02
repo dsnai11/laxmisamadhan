@@ -176,6 +176,7 @@ class UserService {
         managerId: data.managerId,
         createdById,
         lastPasswordChange: new Date(),
+        mustResetPassword: true,
       },
       select: {
         id: true,
@@ -533,6 +534,7 @@ class UserService {
         lockedUntil: null,
         passwordResetToken: null,
         passwordResetExpires: null,
+        mustResetPassword: true,
       },
     });
     await prisma.session.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });

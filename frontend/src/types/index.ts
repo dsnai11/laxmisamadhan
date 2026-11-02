@@ -23,6 +23,7 @@ export interface User {
   mfaEnabled: boolean;
   emailVerified: boolean;
   permissions?: string[];
+  mustResetPassword?: boolean;
   lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;
