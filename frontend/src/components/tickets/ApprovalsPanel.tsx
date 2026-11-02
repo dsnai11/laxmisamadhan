@@ -29,12 +29,31 @@ export default function ApprovalsPanel({
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const { data: dept } = useQuery<any>({
-    queryKey: ['department', ticket.departmentId],
-    queryFn: () => api.getDepartmentById(ticket.departmentId),
+  const { data: eligibleUsers } = useQuery<any[]>({
+    queryKey: ['eligible-approvers', ticket.departmentId],
+    queryFn: () => api.getEligibleApprovers(ticket.departmentId),
     enabled: requestOpen,
   });
-  const managers: any[] = (dept?.users || []).filter((u: any) => MANAGER_ROLES.includes(u.role) && u.status === 'ACTIVE' && u.id !== currentUserId);
+
+  const { data: dept } = useQuery<any>({
+    queryKey: ['department', ticket.departmentId],
+    queryFn: () => (ticket.departmentId ? api.getDepartmentById(ticket.departmentId) : Promise.resolve(null)),
+    enabled: requestOpen && !!ticket.departmentId,
+  });
+
+  // Combine eligible approvers from backend with department users fallback
+  const allManagersList: any[] = eligibleUsers && eligibleUsers.length > 0
+    ? eligibleUsers
+    : (dept?.users || []).filter((u: any) => MANAGER_ROLES.includes(u.role) && u.status === 'ACTIVE');
+
+  // Exclude current user from approving their own request, sort department managers first
+  const managers: any[] = allManagersList
+    .filter((u: any) => u.id !== currentUserId)
+    .sort((a: any, b: any) => {
+      const aInDept = a.departmentId === ticket.departmentId ? -1 : 1;
+      const bInDept = b.departmentId === ticket.departmentId ? -1 : 1;
+      return aInDept - bInDept;
+    });
 
   const refresh = () => qc.invalidateQueries();
 
@@ -78,7 +97,7 @@ export default function ApprovalsPanel({
               {a.response && <p className="text-sm bg-gray-50 rounded-lg p-2 text-gray-700">“{a.response}”</p>}
               {a.status === 'PENDING' && (
                 <div className="flex gap-2 pt-1">
-                  {a.approverId === currentUserId && (
+                  {(a.approverId === currentUserId || isAdmin) && (
                     <>
                       <button className="btn-success btn-sm" onClick={() => { setNote(''); setResponding({ approval: a, status: 'APPROVED' }); }}>Approve</button>
                       <button className="btn-danger btn-sm" onClick={() => { setNote(''); setResponding({ approval: a, status: 'REJECTED' }); }}>Reject</button>
@@ -118,8 +137,12 @@ export default function ApprovalsPanel({
         <div className="space-y-4">
           <Field label="Approver">
             <select className="input" value={form.approverId} onChange={(e) => setForm({ ...form, approverId: e.target.value })}>
-              <option value="">Select a manager...</option>
-              {managers.map((u) => <option key={u.id} value={u.id}>{name(u)} ({humanize(u.role)})</option>)}
+              <option value="">Select a manager or administrator...</option>
+              {managers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {name(u)} ({humanize(u.role)}){u.department?.name ? ` — ${u.department.name}` : ''}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="What needs approval?"><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>

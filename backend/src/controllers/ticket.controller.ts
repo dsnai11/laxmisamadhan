@@ -65,7 +65,13 @@ export const getTicketById = asyncHandler(async (req: AuthenticatedRequest, res:
 });
 
 export const updateTicket = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const ticket = await ticketService.updateTicket(req.params.id, req.body, req.user!.userId, req.user!.role);
+  const ticket = await ticketService.updateTicket(
+    req.params.id,
+    req.body,
+    req.user!.userId,
+    req.user!.role,
+    req.user?.roles
+  );
 
   res.json({
     success: true,
@@ -198,13 +204,17 @@ export const deleteTicket = asyncHandler(async (req: AuthenticatedRequest, res: 
 });
 
 export const getTicketStats = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { departmentId } = req.query;
-  
+  const { departmentId, assignedToId, assignedToMe } = req.query as any;
+  const targetAssignedToId = (assignedToMe === 'true' || assignedToMe === true)
+    ? req.user!.userId
+    : (assignedToId as string);
+
   const stats = await ticketService.getTicketStats(
     departmentId as string,
     req.user!.userId,
     req.user!.role,
-    req.user!.departmentId
+    req.user!.departmentId,
+    targetAssignedToId
   );
 
   res.json({
@@ -222,6 +232,7 @@ export const getMyTickets = asyncHandler(async (req: AuthenticatedRequest, res: 
     status: req.query.status as TicketStatus,
     priority: req.query.priority as TicketPriority,
     category: req.query.category as TicketCategory,
+    slaStatus: req.query.slaStatus as any,
     search: req.query.search as string,
     raisedById: req.user!.userId,
     userId: req.user!.userId,

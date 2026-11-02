@@ -85,7 +85,9 @@ class ApiService {
             return this.client(originalRequest);
           } catch (refreshError) {
             this.clearAuth();
-            window.location.href = '/login';
+            if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+              window.location.href = '/login';
+            }
             return Promise.reject(refreshError);
           }
         }
@@ -229,8 +231,14 @@ class ApiService {
     await this.client.post('/auth/change-password', { currentPassword, newPassword, confirmPassword: newPassword });
   }
 
-  async forgotPassword(email: string): Promise<void> {
-    await this.client.post('/auth/forgot-password', { email });
+  async forgotPassword(identifierOrEmail: string): Promise<void> {
+    const trimmed = (identifierOrEmail || '').trim();
+    const isEmail = trimmed.includes('@');
+    await this.client.post('/auth/forgot-password', {
+      employeeId: !isEmail ? trimmed : undefined,
+      email: isEmail ? trimmed : undefined,
+      identifier: trimmed,
+    });
   }
 
   async resetPassword(token: string, email: string, password: string): Promise<void> {
@@ -288,7 +296,7 @@ class ApiService {
     return response.data.data!;
   }
 
-  async updateTicket(id: string, data: Partial<Ticket>): Promise<Ticket> {
+  async updateTicket(id: string, data: Partial<Ticket> & { transferReason?: string }): Promise<Ticket> {
     const response = await this.client.patch<ApiResponse<Ticket>>(`/tickets/${id}`, data);
     return response.data.data!;
   }
@@ -442,6 +450,16 @@ class ApiService {
 
   async simulateInboundEmail(payload: { fromEmail: string; fromName?: string; toEmail: string; subject: string; body: string }): Promise<any> {
     const response = await this.client.post<ApiResponse<any>>('/email/inbound', payload);
+    return response.data.data!;
+  }
+
+  async syncInboundEmails(): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>('/email/sync');
+    return response.data.data!;
+  }
+
+  async getEmailStatus(): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/email/status');
     return response.data.data!;
   }
 
@@ -694,6 +712,13 @@ class ApiService {
     return response.data.data!;
   }
 
+  async getEligibleApprovers(departmentId?: string): Promise<User[]> {
+    const response = await this.client.get<ApiResponse<User[]>>('/approvals/eligible-approvers', {
+      params: departmentId ? { departmentId } : undefined,
+    });
+    return response.data.data || [];
+  }
+
   async getPendingApprovals(params?: Record<string, any>): Promise<PaginatedResponse<Approval>> {
     const response = await this.client.get<ApiResponse<PaginatedResponse<Approval>>>('/approvals/pending', { params });
     return toPage<any>(response.data.data, 'approvals') as any;
@@ -735,6 +760,11 @@ class ApiService {
 
   async getTicketTrend(params?: Record<string, any>): Promise<any[]> {
     const response = await this.client.get<ApiResponse<any[]>>('/reports/tickets/trend', { params });
+    return response.data.data!;
+  }
+
+  async getManagementDashboard(params?: Record<string, any>): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/reports/management-dashboard', { params });
     return response.data.data!;
   }
 

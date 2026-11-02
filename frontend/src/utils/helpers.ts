@@ -62,6 +62,8 @@ const ACRONYMS = new Set(['sla', 'ai', 'it', 'id', 'vpn', 'ip']);
 
 export function humanize(value?: string | null): string {
   if (!value) return '';
+  if (value === 'DEPENDENCY_ON_CLIENT') return 'Dependency on User';
+  if (value === 'DEPENDENCY_ON_VENDOR') return 'Dependency on Vendor';
   const words = value.split('_').map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.toLowerCase()));
   const text = words.join(' ');
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -89,6 +91,7 @@ export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     OPEN: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 dark:border dark:border-blue-800/60',
     DEPENDENCY_ON_CLIENT: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 dark:border dark:border-amber-800/60',
+    DEPENDENCY_ON_VENDOR: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 dark:border dark:border-purple-800/60',
     RESOLVED: 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300 dark:border dark:border-green-800/60',
     REOPENED: 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 dark:border dark:border-red-800/60',
     // Fallbacks
@@ -172,7 +175,18 @@ export function isPDFFile(mimeType: string): boolean {
   return mimeType === 'application/pdf';
 }
 
-export function getFileIcon(mimeType: string): string {
+export function isAudioFile(mimeType?: string, fileName?: string): boolean {
+  if (!mimeType && !fileName) return false;
+  if (mimeType && mimeType.toLowerCase().startsWith('audio/')) return true;
+  if (fileName) {
+    const ext = fileName.toLowerCase().split('.').pop();
+    if (['webm', 'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext || '')) return true;
+  }
+  return false;
+}
+
+export function getFileIcon(mimeType: string, fileName?: string): string {
+  if (isAudioFile(mimeType, fileName)) return '🎙️';
   if (isImageFile(mimeType)) return '🖼️';
   if (isPDFFile(mimeType)) return '📄';
   if (mimeType.includes('word') || mimeType.includes('document')) return '📝';

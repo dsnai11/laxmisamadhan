@@ -3,17 +3,20 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@services/api';
-import { formatRelativeTime, cn } from '@utils/helpers';
+import { formatRelativeTime, cn, humanize } from '@utils/helpers';
 import { PageHeader, PageLoader, ErrorState, StatusBadge, PriorityBadge, SLABadge, Modal, STATUS_OPTIONS, PRIORITY_OPTIONS, getErrorMessage } from '@components/common/ui';
 import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';
 import TicketContactCards from '@components/tickets/TicketContactCards';
 import AssignedAgentTopTile from '@components/tickets/AssignedAgentTopTile';
+import ApprovalsPanel from '@components/tickets/ApprovalsPanel';
+import { useAuth } from '@context/AuthContext';
 
 export default function AdminTicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   const [comment, setComment] = useState('');
   const [isInternal, setIsInternal] = useState(false);
@@ -46,13 +49,13 @@ export default function AdminTicketDetail() {
   });
 
   const commentMutation = useMutation({
-    mutationFn: () => api.addComment(id!, comment, isInternal),
+    mutationFn: () => api.addComment(ticket?.id || id!, comment, isInternal),
     onSuccess: () => { toast.success('Comment added'); setComment(''); qc.invalidateQueries({ queryKey: ['ticket', id] }); },
     onError: () => toast.error('Failed to add comment'),
   });
 
   const assignMutation = useMutation({
-    mutationFn: () => api.assignTicket(id!, newAssignee, newTeam || undefined),
+    mutationFn: () => api.assignTicket(ticket?.id || id!, newAssignee, newTeam || undefined),
     onSuccess: () => { toast.success('Ticket assigned'); setAssignModal(false); qc.invalidateQueries({ queryKey: ['ticket', id] }); },
     onError: () => toast.error('Assignment failed'),
   });
@@ -62,7 +65,7 @@ export default function AdminTicketDetail() {
       if (newStatus === 'RESOLVED' && !resolution.trim()) {
         throw new Error('Resolution notes are required when resolving a ticket.');
       }
-      return api.updateTicketStatus(id!, newStatus, resolution.trim() || undefined);
+      return api.updateTicketStatus(ticket?.id || id!, newStatus, resolution.trim() || undefined);
     },
     onSuccess: () => { toast.success('Status updated'); setStatusModal(false); qc.invalidateQueries({ queryKey: ['ticket', id] }); },
     onError: (err: any) => toast.error(getErrorMessage(err)),
@@ -205,19 +208,13 @@ export default function AdminTicketDetail() {
 
               {/* Approvals tab */}
               {activeTab === 'approvals' && (
-                <div className="space-y-3">
-                  {(ticket.approvals || []).length === 0 && <p className="text-sm text-gray-500 text-center py-4">No approvals.</p>}
-                  {(ticket.approvals || []).map((a: any) => (
-                    <div key={a.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium">{a.title}</p>
-                        <p className="text-xs text-gray-500">Approver: {a.approver?.firstName} {a.approver?.lastName}</p>
-                      </div>
-                      <span className={cn('badge', a.status === 'APPROVED' ? 'badge-success' : a.status === 'REJECTED' ? 'badge-danger' : 'badge-warning')}>
-                        {a.status}
-                      </span>
-                    </div>
-                  ))}
+                <div className="space-y-4">
+                  <ApprovalsPanel
+                    ticket={ticket}
+                    currentUserId={user?.id}
+                    canRequest={true}
+                    isAdmin={true}
+                  />
                 </div>
               )}
 
@@ -253,13 +250,45 @@ export default function AdminTicketDetail() {
           <MacroSelector ticketId={ticket.id} onApplied={() => refetch()} />
 
           {/* Admin Actions */}
-          <div className="card p-4 space-y-2">
-            <h3 className="font-semibold text-gray-900 text-sm mb-3">Admin Actions</h3>
+          <div className="card p-4 space-y-2.5">
+            <h3 className="font-semibold text-gray-900 text-sm mb-2">Admin Actions</h3>
             <button className="btn-primary btn-sm w-full" onClick={() => { setNewAssignee(ticket.assignedToId || ''); setNewTeam(ticket.teamId || ''); setAssignModal(true); }}>
               {ticket.assignedTo ? 'Reassign Ticket' : 'Assign Ticket'}
             </button>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+              {ticket.status !== 'DEPENDENCY_ON_CLIENT' && ticket.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  disabled={statusMutation.isPending}
+                  onClick={() => api.updateTicketStatus(ticket.id, 'DEPENDENCY_ON_CLIENT').then(() => { toast.success('Status updated to Dependency on User'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
+                  className="btn-secondary text-xs py-1.5 px-2 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                >
+                  ⏳ Dep. on User
+                </button>
+              )}
+              {ticket.status !== 'DEPENDENCY_ON_VENDOR' && ticket.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  disabled={statusMutation.isPending}
+                  onClick={() => api.updateTicketStatus(ticket.id, 'DEPENDENCY_ON_VENDOR').then(() => { toast.success('Status updated to Dependency on Vendor'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
+                  className="btn-secondary text-xs py-1.5 px-2 bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                >
+                  🏢 Dep. on Vendor
+                </button>
+              )}
+              {ticket.status !== 'OPEN' && ticket.status !== 'RESOLVED' && (
+                <button
+                  type="button"
+                  disabled={statusMutation.isPending}
+                  onClick={() => api.updateTicketStatus(ticket.id, 'OPEN').then(() => { toast.success('Status updated to Open'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
+                  className="btn-secondary text-xs py-1.5 px-2 bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                >
+                  🔄 Back to Open
+                </button>
+              )}
+            </div>
             <button className="btn-secondary btn-sm w-full" onClick={() => { setNewStatus(ticket.status); setResolution(''); setStatusModal(true); }}>
-              Change Status
+              Change Status...
             </button>
           </div>
 
@@ -367,7 +396,7 @@ export default function AdminTicketDetail() {
           <div>
             <label className="label">New Status</label>
             <select className="input w-full" value={newStatus} onChange={e => setNewStatus(e.target.value)}>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{humanize(s)}</option>)}
             </select>
           </div>
           {needsResolution && (

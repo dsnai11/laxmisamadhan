@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { AnyZodObject, ZodError } from 'zod';
+import { ZodTypeAny, ZodError } from 'zod';
 import { fromZodError } from 'zod-validation-error';
 
-export const validate = (schema: AnyZodObject) => 
+export const validate = (schema: ZodTypeAny) => 
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       await schema.parseAsync({
@@ -26,7 +26,7 @@ export const validate = (schema: AnyZodObject) =>
     }
   };
 
-export const validateBody = (schema: AnyZodObject) => 
+export const validateBody = (schema: ZodTypeAny) => 
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       req.body = await schema.parseAsync(req.body);
@@ -46,7 +46,7 @@ export const validateBody = (schema: AnyZodObject) =>
     }
   };
 
-export const validateQuery = (schema: AnyZodObject) => 
+export const validateQuery = (schema: ZodTypeAny) => 
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       req.query = await schema.parseAsync(req.query);
@@ -66,7 +66,7 @@ export const validateQuery = (schema: AnyZodObject) =>
     }
   };
 
-export const validateParams = (schema: AnyZodObject) => 
+export const validateParams = (schema: ZodTypeAny) => 
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       req.params = await schema.parseAsync(req.params);

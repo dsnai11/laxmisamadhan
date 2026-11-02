@@ -77,7 +77,14 @@ class TicketService {
 
     const ticketNumber = await this.generateTicketNumber(data.departmentId);
     
-    const slaPolicy = await this.getApplicableSLAPolicy(data.departmentId, data.category, data.priority, data.subCategory);
+    const slaPolicy = await this.getApplicableSLAPolicy(
+      data.departmentId,
+      data.category,
+      data.priority,
+      data.subCategory,
+      data.subIssue || data.item
+    );
+    const effectivePriority = (slaPolicy?.priority as TicketPriority) || data.priority || TicketPriority.MEDIUM;
     const slaTimes = this.calculateSLATimes(slaPolicy);
 
     // Resolve team assignment for subCategory within department if configured
@@ -119,7 +126,7 @@ class TicketService {
         group: targetGroup || (data.group || 'Vendor Support-FMS'),
         site: data.site || null,
         teamId: targetTeamId || null,
-        priority: data.priority,
+        priority: effectivePriority,
         departmentId: data.departmentId,
         raisedById: data.raisedById,
         slaPolicyId: slaPolicy?.id,
@@ -188,9 +195,16 @@ class TicketService {
     };
   }
 
+  private resolveTicketWhere(idOrNumber: string): { id: string } | { ticketNumber: string } {
+    const trimmed = (idOrNumber || '').trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+    return isUuid ? { id: trimmed } : { ticketNumber: trimmed.toUpperCase() };
+  }
+
   async getTicketById(id: string, userId: string, userRole: UserRole): Promise<any> {
+    const where = this.resolveTicketWhere(id);
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: where as any,
       include: {
         raisedBy: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, employeeId: true, jobTitle: true, site: true, reportingManagerName: true, avatar: true, department: true } },
         assignedTo: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, employeeId: true, jobTitle: true, site: true, avatar: true, role: true, department: true } },
@@ -256,9 +270,15 @@ class TicketService {
     return u?.departmentId || undefined;
   }
 
-  async updateTicket(id: string, data: Partial<CreateTicketData>, userId: string, userRole: UserRole): Promise<any> {
+  async updateTicket(
+    id: string,
+    data: Partial<CreateTicketData> & { departmentId?: string; transferReason?: string },
+    userId: string,
+    userRole: UserRole,
+    userRoles?: UserRole[]
+  ): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: this.resolveTicketWhere(id) as any,
       include: { department: true },
     });
 
@@ -266,7 +286,9 @@ class TicketService {
       throw new Error('Ticket not found');
     }
 
-    if (!this.canModifyTicket(ticket, userId, userRole, await this.getUserDepartmentId(userId))) {
+    const userDeptId = await this.getUserDepartmentId(userId);
+
+    if (!this.canModifyTicket(ticket, userId, userRole, userDeptId, userRoles)) {
       throw new Error('Permission denied');
     }
 
@@ -274,23 +296,62 @@ class TicketService {
     const updates: Prisma.TicketUpdateInput = {};
 
     for (const [key, value] of Object.entries(data)) {
+      if (key === 'transferReason' || key === 'departmentId') continue;
       if (value !== undefined && ticket[key as keyof typeof ticket] !== value) {
         oldValues[key] = ticket[key as keyof typeof ticket];
         updates[key as keyof Prisma.TicketUpdateInput] = value;
       }
     }
 
+    const isRaiserOnly = userRole === UserRole.RAISER && (!userRoles || !userRoles.some(r => STAFF_ROLES.includes(r)));
+    if (isRaiserOnly) {
+      delete updates.priority;
+      delete updates.assignedTo;
+      delete updates.team;
+    }
+
+    // If transferring to a new department (e.g. raised in wrong department):
+    if (data.departmentId && data.departmentId !== ticket.departmentId) {
+      const allRoles: UserRole[] = Array.from(new Set([
+        ...(userRole ? [userRole] : []),
+        ...(userRoles || [])
+      ]));
+      const sameDept = !!userDeptId && userDeptId === ticket.departmentId;
+      const canTransfer = allRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))
+        || (ticket.department?.headId === userId)
+        || (allRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) && sameDept);
+
+      if (!canTransfer) {
+        throw new Error('Permission denied: Only Team Leads, Department Heads, and Admins can transfer ticket to another department');
+      }
+
+      updates.department = { connect: { id: data.departmentId } };
+      // Clear old assignment and team since they belong to the previous department
+      updates.assignedTo = { disconnect: true };
+      updates.team = { disconnect: true };
+      oldValues['departmentId'] = ticket.departmentId;
+      oldValues['assignedToId'] = ticket.assignedToId;
+      oldValues['teamId'] = ticket.teamId;
+    }
+
     if (Object.keys(updates).length === 0) {
       return ticket;
     }
 
-    if ((updates.priority || updates.category || updates.subCategory) && !ticket.resolvedAt) {
+    if ((updates.priority || updates.category || updates.subCategory || data.departmentId) && !ticket.resolvedAt) {
+      const targetDeptId = data.departmentId || ticket.departmentId;
       const newCategory = (updates.category as TicketCategory) || ticket.category;
       const newPriority = (updates.priority as TicketPriority) || ticket.priority;
       const newSubCategory = updates.subCategory !== undefined ? (updates.subCategory as string) : ticket.subCategory;
-      const newPolicy = await this.getApplicableSLAPolicy(ticket.departmentId, newCategory, newPriority, newSubCategory);
+      const newPolicy = await this.getApplicableSLAPolicy(
+        targetDeptId,
+        newCategory,
+        newPriority,
+        newSubCategory,
+        (data as any).subIssue || ticket.subIssue || ticket.item
+      );
       if (newPolicy && newPolicy.id !== ticket.slaPolicyId) {
-        updates.slaPolicyId = newPolicy.id;
+        updates.slaPolicy = { connect: { id: newPolicy.id } };
         const newTimes = this.calculateSLATimes(newPolicy);
         if (!ticket.respondedAt && newTimes.responseDueAt) updates.responseDueAt = newTimes.responseDueAt;
         if (newTimes.resolutionDueAt) updates.resolutionDueAt = newTimes.resolutionDueAt;
@@ -298,14 +359,14 @@ class TicketService {
     }
 
     const updatedTicket = await prisma.ticket.update({
-      where: { id },
+      where: { id: ticket.id },
       data: {
         ...updates,
         updates: {
           create: Object.entries(oldValues).map(([field, oldValue]) => ({
             field,
-            oldValue: String(oldValue),
-            newValue: String(data[field as keyof CreateTicketData]),
+            oldValue: String(oldValue ?? ''),
+            newValue: String((data as any)[field] ?? ''),
             userId,
           })),
         },
@@ -323,7 +384,21 @@ class TicketService {
       await logActivity(userId, 'TICKET_UPDATED', `Updated ${field}`, id, { 
         field, 
         oldValue, 
-        newValue: data[field as keyof CreateTicketData] 
+        newValue: (data as any)[field] ?? null 
+      });
+    }
+
+    if (oldValues.departmentId && oldValues.departmentId !== updatedTicket.departmentId) {
+      const oldDeptName = ticket.department?.name || 'Previous Department';
+      const newDeptName = updatedTicket.department?.name || 'New Department';
+      const reasonStr = data.transferReason ? ` (Reason: ${data.transferReason})` : ' (Reassigned: Raised in wrong department)';
+      await prisma.comment.create({
+        data: {
+          ticketId: id,
+          userId,
+          content: `🔄 Department reassigned from ${oldDeptName} to ${newDeptName}${reasonStr}. Ticket unassigned and queued for ${newDeptName}.`,
+          isInternal: true,
+        },
       });
     }
 
@@ -342,7 +417,7 @@ class TicketService {
     actorRoles?: UserRole[]
   ): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: this.resolveTicketWhere(id) as any,
       include: { department: true, assignedTo: true },
     });
 
@@ -398,7 +473,7 @@ class TicketService {
     }
 
     const updatedTicket = await prisma.ticket.update({
-      where: { id },
+      where: { id: ticket.id },
       data: {
         assignedToId,
         assignedById,
@@ -458,7 +533,7 @@ class TicketService {
 
   async updateStatus(id: string, status: TicketStatus, userId: string, userRole: UserRole, resolution?: string, resolutionSummary?: string): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id },
+      where: this.resolveTicketWhere(id) as any,
       include: { raisedBy: true, assignedTo: true, department: true },
     });
 
@@ -522,7 +597,7 @@ class TicketService {
     }
 
     const updatedTicket = await prisma.ticket.update({
-      where: { id },
+      where: { id: ticket.id },
       data: updateData,
       include: {
         raisedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -532,7 +607,7 @@ class TicketService {
       },
     });
 
-    await logActivity(userId, 'STATUS_CHANGED', `Status changed from ${ticket.status} to ${status}`, id, { 
+    await logActivity(userId, 'STATUS_CHANGED', `Status changed from ${ticket.status} to ${status}`, ticket.id, { 
       oldStatus: ticket.status, 
       newStatus: status,
       resolution,
@@ -545,7 +620,7 @@ class TicketService {
 
   async addComment(ticketId: string, userId: string, content: string, isInternal: boolean, parentId?: string, mentions?: string[], userRole?: UserRole): Promise<any> {
     const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
+      where: this.resolveTicketWhere(ticketId) as any,
       include: { raisedBy: true, assignedTo: true, department: true, watchers: { include: { user: true } } },
     });
 
@@ -561,16 +636,16 @@ class TicketService {
     }
 
     if (!isInternal && !ticket.respondedAt && userId !== ticket.raisedById) {
-      await prisma.ticket.update({ where: { id: ticketId }, data: { respondedAt: new Date() } });
+      await prisma.ticket.update({ where: { id: ticket.id }, data: { respondedAt: new Date() } });
     }
 
     if (!isInternal && userId === ticket.raisedById && ticket.status === TicketStatus.DEPENDENCY_ON_CLIENT) {
-      await this.updateStatus(ticketId, TicketStatus.OPEN, userId, userRole || UserRole.RAISER);
+      await this.updateStatus(ticket.id, TicketStatus.OPEN, userId, userRole || UserRole.RAISER);
     }
 
     const comment = await prisma.comment.create({
       data: {
-        ticketId,
+        ticketId: ticket.id,
         userId,
         content,
         isInternal,
@@ -583,7 +658,7 @@ class TicketService {
       },
     });
 
-    await logActivity(userId, 'COMMENT_ADDED', isInternal ? 'Added internal note' : 'Added comment', ticketId, { 
+    await logActivity(userId, 'COMMENT_ADDED', isInternal ? 'Added internal note' : 'Added comment', ticket.id, { 
       commentId: comment.id,
       isInternal,
     });
@@ -617,13 +692,13 @@ class TicketService {
   }
 
   async addAttachment(ticketId: string, userId: string, userRole: UserRole, file: Express.Multer.File): Promise<any> {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { department: true, watchers: true } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, include: { department: true, watchers: true } });
     if (!ticket) throw new Error('Ticket not found');
     if (!this.canAccessTicket(ticket, userId, userRole, await this.getUserDepartmentId(userId))) {
       throw new Error('Access denied');
     }
 
-    const dir = path.resolve(config.upload.dir, 'tickets', ticketId);
+    const dir = path.resolve(config.upload.dir, 'tickets', ticket.id);
     await fs.promises.mkdir(dir, { recursive: true });
     const ext = path.extname(file.originalname).slice(0, 12).replace(/[^.\w]/g, '');
     const fileName = `${crypto.randomUUID()}${ext}`;
@@ -632,7 +707,7 @@ class TicketService {
 
     const attachment = await prisma.attachment.create({
       data: {
-        ticketId,
+        ticketId: ticket.id,
         userId,
         fileName,
         originalName: file.originalname,
@@ -644,13 +719,15 @@ class TicketService {
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
 
-    await logActivity(userId, 'ATTACHMENT_ADDED', `Attached ${file.originalname}`, ticketId, { attachmentId: attachment.id });
+    await logActivity(userId, 'ATTACHMENT_ADDED', `Attached ${file.originalname}`, ticket.id, { attachmentId: attachment.id });
     return attachment;
   }
 
   async getAttachmentForDownload(ticketId: string, attachmentId: string, userId: string, userRole: UserRole): Promise<any> {
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, select: { id: true } });
+    const realTicketId = ticket?.id || ticketId;
     const attachment = await prisma.attachment.findFirst({
-      where: { id: attachmentId, ticketId },
+      where: { id: attachmentId, ticketId: realTicketId },
       include: { ticket: { include: { department: true, watchers: true } } },
     });
     if (!attachment || !attachment.ticket) throw new Error('Attachment not found');
@@ -661,35 +738,40 @@ class TicketService {
   }
 
   async deleteAttachment(ticketId: string, attachmentId: string, userId: string, userRole: UserRole): Promise<void> {
-    const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, ticketId } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, select: { id: true } });
+    const realTicketId = ticket?.id || ticketId;
+    const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, ticketId: realTicketId } });
     if (!attachment) throw new Error('Attachment not found');
     if (attachment.userId !== userId && !['SUPER_ADMIN', 'ADMIN'].includes(userRole)) {
       throw new Error('Permission denied');
     }
     await prisma.attachment.delete({ where: { id: attachmentId } });
     await fs.promises.unlink(attachment.path).catch(() => undefined);
-    await logActivity(userId, 'ATTACHMENT_REMOVED', `Removed ${attachment.originalName}`, ticketId, { attachmentId });
+    await logActivity(userId, 'ATTACHMENT_REMOVED', `Removed ${attachment.originalName}`, realTicketId, { attachmentId });
   }
 
   async addWatcher(ticketId: string, userId: string, addedById: string): Promise<void> {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
     if (!ticket) throw new Error('Ticket not found');
 
     await prisma.ticketWatcher.upsert({
-      where: { ticketId_userId: { ticketId, userId } },
-      create: { ticketId, userId },
+      where: { ticketId_userId: { ticketId: ticket.id, userId } },
+      create: { ticketId: ticket.id, userId },
       update: {},
     });
 
-    await logActivity(addedById, 'WATCHER_ADDED', `Added watcher`, ticketId, { watcherId: userId });
+    await logActivity(addedById, 'WATCHER_ADDED', `Added watcher`, ticket.id, { watcherId: userId });
   }
 
   async removeWatcher(ticketId: string, userId: string, removedById: string): Promise<void> {
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
+    if (!ticket) throw new Error('Ticket not found');
+
     await prisma.ticketWatcher.delete({
-      where: { ticketId_userId: { ticketId, userId } },
+      where: { ticketId_userId: { ticketId: ticket.id, userId } },
     });
 
-    await logActivity(removedById, 'WATCHER_REMOVED', `Removed watcher`, ticketId, { watcherId: userId });
+    await logActivity(removedById, 'WATCHER_REMOVED', `Removed watcher`, ticket.id, { watcherId: userId });
   }
 
   async bulkAction(ticketIds: string[], action: string, data: Record<string, any>, userId: string, userRole: UserRole, userRoles?: UserRole[]): Promise<{ success: number; failed: number; errors: any[] }> {
@@ -697,7 +779,7 @@ class TicketService {
 
     for (const ticketId of ticketIds) {
       try {
-        const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+        const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
         if (!ticket) {
           results.failed++;
           results.errors.push({ ticketId, error: 'Ticket not found' });
@@ -713,23 +795,23 @@ class TicketService {
 
         switch (action) {
           case 'assign':
-            await this.assignTicket(ticketId, data.assignedToId, userId, data.teamId, data.note, userRole, userRoles);
+            await this.assignTicket(ticket.id, data.assignedToId, userId, data.teamId, data.note, userRole, userRoles);
             break;
           case 'status':
-            await this.updateStatus(ticketId, data.status, userId, userRole, data.resolution, data.resolutionSummary);
+            await this.updateStatus(ticket.id, data.status, userId, userRole, data.resolution, data.resolutionSummary);
             break;
           case 'priority':
-            await this.updateTicket(ticketId, { priority: data.priority }, userId, userRole);
+            await this.updateTicket(ticket.id, { priority: data.priority }, userId, userRole);
             break;
           case 'department':
-            await this.updateTicket(ticketId, { departmentId: data.departmentId }, userId, userRole);
+            await this.updateTicket(ticket.id, { departmentId: data.departmentId }, userId, userRole);
             break;
           case 'tags':
-            await this.updateTicket(ticketId, { tags: data.tags }, userId, userRole);
+            await this.updateTicket(ticket.id, { tags: data.tags }, userId, userRole);
             break;
           case 'merge':
-            if (data.primaryTicketId && ticketId !== data.primaryTicketId) {
-              const primary = await prisma.ticket.findUnique({ where: { id: data.primaryTicketId } });
+            if (data.primaryTicketId && ticket.id !== data.primaryTicketId) {
+              const primary = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(data.primaryTicketId) as any });
               if (primary) {
                 await prisma.comment.create({
                   data: {
@@ -740,21 +822,21 @@ class TicketService {
                     isSystem: true,
                   },
                 });
-                await this.updateStatus(ticketId, TicketStatus.RESOLVED, userId, userRole, `Merged into ticket #${primary.ticketNumber}`, `Merged into ticket #${primary.ticketNumber}`);
+                await this.updateStatus(ticket.id, TicketStatus.RESOLVED, userId, userRole, `Merged into ticket #${primary.ticketNumber}`, `Merged into ticket #${primary.ticketNumber}`);
               }
             }
             break;
           case 'link':
-            if (data.parentTicketId && ticketId !== data.parentTicketId) {
+            if (data.parentTicketId && ticket.id !== data.parentTicketId) {
               await prisma.ticket.update({
-                where: { id: ticketId },
+                where: { id: ticket.id },
                 data: { parentTicketId: data.parentTicketId },
               });
-              await logActivity(userId, 'TICKET_LINKED', `Linked to parent ticket`, ticketId);
+              await logActivity(userId, 'TICKET_LINKED', `Linked to parent ticket`, ticket.id);
             }
             break;
           case 'delete':
-            await this.deleteTicket(ticketId, userId, userRole);
+            await this.deleteTicket(ticket.id, userId, userRole);
             break;
         }
 
@@ -769,30 +851,52 @@ class TicketService {
   }
 
   async deleteTicket(id: string, userId: string, userRole: UserRole): Promise<void> {
-    const ticket = await prisma.ticket.findUnique({ where: { id } });
+    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(id) as any });
     if (!ticket) throw new Error('Ticket not found');
 
     if (!['SUPER_ADMIN', 'ADMIN'].includes(userRole) && ticket.raisedById !== userId) {
       throw new Error('Permission denied');
     }
 
-    await prisma.ticket.delete({ where: { id } });
-    await logActivity(userId, 'TICKET_DELETED', `Deleted ticket ${ticket.ticketNumber}`, id);
+    await prisma.ticket.delete({ where: { id: ticket.id } });
+    await logActivity(userId, 'TICKET_DELETED', `Deleted ticket ${ticket.ticketNumber}`, ticket.id);
   }
 
-  async getTicketStats(departmentId?: string, userId?: string, userRole?: UserRole, userDepartmentId?: string): Promise<any> {
+  async getTicketStats(
+    departmentId?: string,
+    userId?: string,
+    userRole?: UserRole,
+    userDepartmentId?: string,
+    assignedToId?: string
+  ): Promise<any> {
     const where: Prisma.TicketWhereInput = {};
 
     if (departmentId) where.departmentId = departmentId;
+    if (assignedToId) where.assignedToId = assignedToId;
     const visibility = this.buildVisibilityFilter(userId, userRole, userDepartmentId);
     if (visibility) where.AND = [visibility];
 
-    const [byStatus, byPriority, byCategory, slaStats] = await Promise.all([
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [byStatus, byPriority, byCategory, slaStats, resolvedTodayCount] = await Promise.all([
       prisma.ticket.groupBy({ by: ['status'], where, _count: true }),
       prisma.ticket.groupBy({ by: ['priority'], where, _count: true }),
       prisma.ticket.groupBy({ by: ['category'], where, _count: true }),
       prisma.ticket.groupBy({ by: ['slaStatus'], where, _count: true }),
+      prisma.ticket.count({
+        where: {
+          ...where,
+          status: TicketStatus.RESOLVED,
+          resolvedAt: { gte: todayStart },
+        },
+      }),
     ]);
+
+    const statusMap = byStatus.reduce((acc, s) => {
+      acc[s.status] = s._count;
+      return acc;
+    }, {} as Record<string, number>);
 
     return {
       byStatus: byStatus.map(s => ({ status: s.status, count: s._count })),
@@ -800,6 +904,12 @@ class TicketService {
       byCategory: byCategory.map(c => ({ category: c.category, count: c._count })),
       slaStats: slaStats.map(s => ({ status: s.slaStatus, count: s._count })),
       totalTickets: byStatus.reduce((sum, s) => sum + s._count, 0),
+      openCount: statusMap[TicketStatus.OPEN] || 0,
+      resolvedCount: statusMap[TicketStatus.RESOLVED] || 0,
+      reopenedCount: statusMap[TicketStatus.REOPENED] || 0,
+      dependencyCount: statusMap[TicketStatus.DEPENDENCY_ON_CLIENT] || 0,
+      dependencyVendorCount: statusMap[TicketStatus.DEPENDENCY_ON_VENDOR] || 0,
+      resolvedTodayCount,
     };
   }
 
@@ -815,18 +925,59 @@ class TicketService {
     if (params.raisedById) where.raisedById = params.raisedById;
     if (params.teamId) where.teamId = params.teamId;
     if (params.tags?.length) where.tags = { hasSome: params.tags };
-    if (params.slaStatus) where.slaStatus = params.slaStatus;
     if (params.hasAttachments !== undefined) where.attachments = params.hasAttachments ? { some: {} } : { none: {} };
     if (params.isWatching && params.userId) where.watchers = { some: { userId: params.userId } };
 
     const and: Prisma.TicketWhereInput[] = [];
 
-    if (params.search) {
+    if (params.slaStatus === 'BREACHED') {
       and.push({
         OR: [
-          { ticketNumber: { contains: params.search, mode: 'insensitive' } },
-          { title: { contains: params.search, mode: 'insensitive' } },
-          { description: { contains: params.search, mode: 'insensitive' } },
+          { slaStatus: 'BREACHED' },
+          {
+            resolvedAt: null,
+            status: { not: TicketStatus.RESOLVED },
+            resolutionDueAt: { lt: new Date() },
+          },
+        ],
+      });
+    } else if (params.slaStatus) {
+      where.slaStatus = params.slaStatus;
+    }
+
+    if (params.search) {
+      const q = params.search.trim();
+      and.push({
+        OR: [
+          { ticketNumber: { contains: q, mode: 'insensitive' } },
+          { title: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { subCategory: { contains: q, mode: 'insensitive' } },
+          { subIssue: { contains: q, mode: 'insensitive' } },
+          { item: { contains: q, mode: 'insensitive' } },
+          {
+            raisedBy: {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { lastName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          },
+          {
+            assignedTo: {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { lastName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          },
+          {
+            department: {
+              name: { contains: q, mode: 'insensitive' },
+            },
+          },
         ],
       });
     }
@@ -876,23 +1027,28 @@ class TicketService {
     return false;
   }
 
-  private canModifyTicket(ticket: any, userId: string, userRole: UserRole, userDeptId?: string): boolean {
-    if (['SUPER_ADMIN', 'ADMIN'].includes(userRole)) return true;
+  private canModifyTicket(ticket: any, userId: string, userRole: UserRole, userDeptId?: string, userRoles?: UserRole[]): boolean {
+    const allRoles: UserRole[] = Array.from(new Set([
+      ...(userRole ? [userRole] : []),
+      ...(userRoles || [])
+    ]));
+    if (allRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))) return true;
     if (ticket.assignedToId === userId) return true;
     if (ticket.raisedById === userId && ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'].includes(ticket.status)) return true;
     if (ticket.department?.headId === userId) return true;
-    if (['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(userRole) && userDeptId && ticket.departmentId === userDeptId) return true;
+    if (allRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) && userDeptId && ticket.departmentId === userDeptId) return true;
     return false;
   }
 
   private getValidStatusTransitions(currentStatus: TicketStatus): TicketStatus[] {
     const transitions: Record<TicketStatus, TicketStatus[]> = {
-      [TicketStatus.OPEN]: [TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
-      [TicketStatus.DEPENDENCY_ON_CLIENT]: [TicketStatus.OPEN, TicketStatus.RESOLVED],
+      [TicketStatus.OPEN]: [TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED],
+      [TicketStatus.DEPENDENCY_ON_CLIENT]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED],
+      [TicketStatus.DEPENDENCY_ON_VENDOR]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
       [TicketStatus.RESOLVED]: [TicketStatus.REOPENED],
-      [TicketStatus.REOPENED]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED],
+      [TicketStatus.REOPENED]: [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED],
     };
-    return transitions[currentStatus] || [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.RESOLVED, TicketStatus.REOPENED];
+    return transitions[currentStatus] || [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED, TicketStatus.REOPENED];
   }
 
   private async generateTicketNumber(departmentId: string): Promise<string> {
@@ -911,53 +1067,138 @@ class TicketService {
     return ticketNumber;
   }
 
-  private async getApplicableSLAPolicy(departmentId: string, category: TicketCategory, priority: TicketPriority, subCategory?: string | null) {
+  private async getApplicableSLAPolicy(
+    departmentId: string,
+    category: TicketCategory,
+    priority?: TicketPriority,
+    subCategory?: string | null,
+    subIssue?: string | null
+  ) {
     const cleanSubCat = subCategory?.trim();
+    const cleanSubIssue = subIssue?.trim();
+
+    // 0a. Specific Department + Sub-Issue match with Priority
+    if (cleanSubIssue && departmentId) {
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId,
+            subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      // 0b. Sub-Issue policy defines its own priority
+      const matchAnyPriority = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+          isActive: true,
+        },
+      });
+      if (matchAnyPriority) return matchAnyPriority;
+    }
+
+    // 0c. Global Sub-Issue match
+    if (cleanSubIssue) {
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId: null,
+            subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId: null,
+          subCategory: { equals: cleanSubIssue, mode: 'insensitive' },
+          isActive: true,
+        },
+      });
+      if (matchAny) return matchAny;
+    }
 
     // 1. Specific Department + Category + Subcategory + Priority
     if (cleanSubCat && departmentId && category) {
-      const match = await prisma.sLAPolicy.findFirst({
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId,
+            category,
+            subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId,
           category,
           subCategory: { equals: cleanSubCat, mode: 'insensitive' },
-          priority,
           isActive: true,
         },
       });
-      if (match) return match;
+      if (matchAny) return matchAny;
     }
 
     // 2. Department + Subcategory + Priority (any category)
     if (cleanSubCat && departmentId) {
-      const match = await prisma.sLAPolicy.findFirst({
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId,
+            category: null,
+            subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId,
-          category: null,
           subCategory: { equals: cleanSubCat, mode: 'insensitive' },
-          priority,
           isActive: true,
         },
       });
-      if (match) return match;
+      if (matchAny) return matchAny;
     }
 
     // 3. Global Subcategory + Priority
     if (cleanSubCat) {
-      const match = await prisma.sLAPolicy.findFirst({
+      if (priority) {
+        const match = await prisma.sLAPolicy.findFirst({
+          where: {
+            departmentId: null,
+            ...(category ? { category } : {}),
+            subCategory: { equals: cleanSubCat, mode: 'insensitive' },
+            priority,
+            isActive: true,
+          },
+        });
+        if (match) return match;
+      }
+      const matchAny = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId: null,
-          ...(category ? { category } : {}),
           subCategory: { equals: cleanSubCat, mode: 'insensitive' },
-          priority,
           isActive: true,
         },
       });
-      if (match) return match;
+      if (matchAny) return matchAny;
     }
 
     // 4. Department + Category + Priority (no subcategory constraint)
-    if (departmentId && category) {
+    if (departmentId && category && priority) {
       const match = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId,
@@ -978,19 +1219,21 @@ class TicketService {
     if (categoryConfig?.slaPolicy) return categoryConfig.slaPolicy;
 
     // 6. Department general Priority SLA
-    const deptPolicy = await prisma.sLAPolicy.findFirst({
-      where: {
-        departmentId,
-        category: null,
-        subCategory: null,
-        priority,
-        isActive: true,
-      },
-    });
-    if (deptPolicy) return deptPolicy;
+    if (priority) {
+      const deptPolicy = await prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId,
+          category: null,
+          subCategory: null,
+          priority,
+          isActive: true,
+        },
+      });
+      if (deptPolicy) return deptPolicy;
+    }
 
     // 7. Global Category + Priority (no subcategory constraint)
-    if (category) {
+    if (category && priority) {
       const globalCat = await prisma.sLAPolicy.findFirst({
         where: {
           departmentId: null,
@@ -1004,14 +1247,17 @@ class TicketService {
     }
 
     // 8. Global Priority Fallback
-    return prisma.sLAPolicy.findFirst({
-      where: {
-        departmentId: null,
-        priority,
-        isActive: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    if (priority) {
+      return prisma.sLAPolicy.findFirst({
+        where: {
+          departmentId: null,
+          priority,
+          isActive: true,
+        },
+      });
+    }
+
+    return null;
   }
 
   private addBusinessMinutes(startDate: Date, minutesToAdd: number, excludesWeekends = true, holidays: string[] = [], startHour = 9, endHour = 18): Date {
@@ -1162,7 +1408,7 @@ class TicketService {
               members.map(async (m: any) => ({
                 agent: m,
                 count: await prisma.ticket.count({
-                  where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
+                  where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] } },
                 }),
               }))
             );
@@ -1198,7 +1444,7 @@ class TicketService {
             ],
           },
         },
-        _count: { select: { tickets: { where: { status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] } } } } },
+        _count: { select: { tickets: { where: { status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] } } } } },
       },
     });
 
@@ -1224,7 +1470,7 @@ class TicketService {
             members.map(async (m: any) => ({
               agent: m,
               count: await prisma.ticket.count({
-                where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
+                where: { assignedToId: m.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] } },
               }),
             }))
           );
@@ -1260,7 +1506,7 @@ class TicketService {
             agents.map(async (a: any) => ({
               agent: a,
               count: await prisma.ticket.count({
-                where: { assignedToId: a.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT] } },
+                where: { assignedToId: a.id, status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] } },
               }),
             }))
           );
@@ -1310,7 +1556,7 @@ class TicketService {
   }
 
   private async sendTicketCreatedNotifications(ticket: any): Promise<void> {
-    const watchers = ticket.watchers.map((w: any) => w.user);
+    const watchers = (ticket.watchers || []).map((w: any) => w.user);
     const recipients = [ticket.raisedBy, ...watchers].filter(Boolean);
 
     for (const user of recipients) {
@@ -1322,6 +1568,17 @@ class TicketService {
         referenceId: ticket.id,
         referenceType: 'TICKET',
       });
+    }
+
+    if (ticket.raisedBy?.email) {
+      fireAndForget(emailService.sendTicketCreatedEmail(
+        ticket.raisedBy.email,
+        ticket.ticketNumber,
+        ticket.title,
+        config.frontendUrl,
+        ticket.department?.name,
+        ticket.priority
+      ));
     }
   }
 

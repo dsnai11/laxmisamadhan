@@ -12,13 +12,23 @@ const logger = createLogger('user-service');
 interface CreateUserData {
   email: string;
   firstName: string;
-  lastName: string;
+  lastName?: string;
   phone?: string;
+  mobile?: string;
   employeeId?: string;
-  role?: UserRole;
+  jobTitle?: string;
+  desginations?: string;
+  designations?: string;
+  departmentName?: string;
+  departmentRaiserName?: string;
+  reportingManagerName?: string;
+  branch?: string;
+  state?: string;
+  role?: any;
   roles?: UserRole[];
   status?: UserStatus;
   departmentId?: string;
+  canViewTeamBucket?: boolean;
   managerId?: string;
   sendWelcomeEmail?: boolean;
   temporaryPassword?: string;
@@ -33,11 +43,15 @@ interface UpdateUserData {
   employeeId?: string | null;
   jobTitle?: string | null;
   site?: string | null;
+  branch?: string | null;
+  state?: string | null;
   reportingManagerName?: string | null;
+  departmentRaiserName?: string | null;
   role?: UserRole;
   roles?: UserRole[];
   status?: UserStatus;
   departmentId?: string | null;
+  canViewTeamBucket?: boolean;
   managerId?: string | null;
   avatar?: string | null;
 }
@@ -56,24 +70,85 @@ interface UserQueryParams {
   dateTo?: Date;
 }
 
+interface CreateUserOptions {
+  cachedPasswordHash?: string;
+  deptCache?: Map<string, string>;
+  skipActivityLog?: boolean;
+}
+
 class UserService {
-  async createUser(data: CreateUserData, createdById?: string): Promise<any> {
+  async createUser(data: CreateUserData, createdById?: string, options?: CreateUserOptions): Promise<any> {
     const existingUser = await prisma.user.findUnique({
-      where: { email: data.email.toLowerCase() },
+      where: { email: data.email.toLowerCase().trim() },
     });
 
     if (existingUser) {
-      throw new Error('Email already registered');
+      throw new Error(`Email ${data.email} is already registered`);
+    }
+
+    const normEmployeeId = data.employeeId?.trim() || null;
+    if (normEmployeeId) {
+      const existingByEmpId = await prisma.user.findFirst({
+        where: { employeeId: { equals: normEmployeeId, mode: 'insensitive' } },
+        select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+      });
+      if (existingByEmpId) {
+        throw new Error(`Employee ID "${normEmployeeId}" is already registered to ${existingByEmpId.firstName} ${existingByEmpId.lastName} (${existingByEmpId.email})`);
+      }
     }
 
     let password = data.temporaryPassword || generateToken(12);
-    const passwordHash = await hashPassword(password);
+    const passwordHash = options?.cachedPasswordHash || (await hashPassword(password));
+
+    let firstName = (data.firstName || '').trim();
+    let lastName = (data.lastName || '').trim();
+    if (!lastName && firstName.includes(' ')) {
+      const parts = firstName.split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ');
+    }
+    if (!lastName) {
+      lastName = '-';
+    }
+
+    // Resolve Department: by ID or by Name
+    let departmentId = data.departmentId || null;
+    if (!departmentId && data.departmentName && data.departmentName.trim()) {
+      const dName = data.departmentName.trim();
+      const normKey = dName.toLowerCase();
+      if (options?.deptCache && options.deptCache.has(normKey)) {
+        departmentId = options.deptCache.get(normKey) || null;
+      } else {
+        let dept = await prisma.department.findFirst({
+          where: { name: { equals: dName, mode: 'insensitive' } },
+        });
+        if (!dept) {
+          dept = await prisma.department.create({
+            data: { name: dName },
+          });
+        }
+        departmentId = dept.id;
+        if (options?.deptCache) {
+          options.deptCache.set(normKey, dept.id);
+        }
+      }
+    }
+
+    const jobTitle = (data.jobTitle || data.designations || data.desginations || '').trim() || null;
+    const departmentRaiserName = (data.departmentRaiserName || '').trim() || null;
+    const reportingManagerName = (data.reportingManagerName || departmentRaiserName || '').trim() || null;
+    const branch = (data.branch || '').trim() || null;
+    const state = (data.state || '').trim() || null;
+    const phone = (data.phone || data.mobile || '').trim() || null;
+    const mobile = (data.mobile || data.phone || '').trim() || null;
 
     let roles: UserRole[] = [];
+    const validRoles = Object.values(UserRole);
     if (data.roles && data.roles.length > 0) {
       roles = Array.from(new Set(data.roles));
     } else if (data.role) {
-      roles = [data.role];
+      const formatted = String(data.role).trim().toUpperCase().replace(/[\s-]+/g, '_') as UserRole;
+      roles = validRoles.includes(formatted) ? [formatted] : [UserRole.RAISER];
     } else {
       roles = [UserRole.RAISER];
     }
@@ -81,16 +156,23 @@ class UserService {
 
     const user = await prisma.user.create({
       data: {
-        email: data.email.toLowerCase(),
+        email: data.email.toLowerCase().trim(),
         passwordHash,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        phone: data.phone,
-        employeeId: data.employeeId || null,
+        firstName,
+        lastName,
+        phone,
+        mobile,
+        employeeId: normEmployeeId,
+        jobTitle,
+        site: branch || null,
+        branch,
+        state,
+        departmentRaiserName,
+        reportingManagerName,
         role: primaryRole,
         roles,
         status: data.status || UserStatus.ACTIVE,
-        departmentId: data.departmentId,
+        departmentId,
         managerId: data.managerId,
         createdById,
         lastPasswordChange: new Date(),
@@ -101,11 +183,19 @@ class UserService {
         firstName: true,
         lastName: true,
         phone: true,
+        mobile: true,
         employeeId: true,
+        jobTitle: true,
+        site: true,
+        branch: true,
+        state: true,
+        departmentRaiserName: true,
+        reportingManagerName: true,
         role: true,
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -115,7 +205,9 @@ class UserService {
       },
     });
 
-    await logActivity(createdById || 'system', 'USER_CREATED', `Created user ${user.email}`, undefined, { userId: user.id, role: user.role });
+    if (!options?.skipActivityLog) {
+      await logActivity(createdById || 'system', 'USER_CREATED', `Created user ${user.email}`, undefined, { userId: user.id, role: user.role });
+    }
 
     if (data.sendWelcomeEmail !== false) {
       await emailService.sendWelcomeEmail(user.email, user.firstName, config.frontendUrl, data.temporaryPassword ? password : undefined);
@@ -128,20 +220,53 @@ class UserService {
 
   async bulkCreateUsers(usersData: CreateUserData[], createdById: string): Promise<{ success: number; failed: number; users: any[]; errors: any[] }> {
     const results = { success: 0, failed: 0, users: [] as any[], errors: [] as any[] };
+    const passwordHashMap = new Map<string, string>();
+    const deptCache = new Map<string, string>();
+    const seenEmpIds = new Set<string>();
 
     for (const userData of usersData) {
       try {
-        const user = await this.createUser(userData, createdById);
+        const empId = userData.employeeId?.trim();
+        if (empId) {
+          const lowerEmp = empId.toLowerCase();
+          if (seenEmpIds.has(lowerEmp)) {
+            throw new Error(`Duplicate Employee ID "${empId}" found within uploaded file/batch`);
+          }
+          seenEmpIds.add(lowerEmp);
+        }
+
+        const pwd = userData.temporaryPassword || 'LaxmiUser@123';
+        if (!passwordHashMap.has(pwd)) {
+          passwordHashMap.set(pwd, await hashPassword(pwd));
+        }
+        const cachedPasswordHash = passwordHashMap.get(pwd);
+
+        userData.sendWelcomeEmail = false;
+        const user = await this.createUser(userData, createdById, {
+          cachedPasswordHash,
+          deptCache,
+          skipActivityLog: true,
+        });
         results.success++;
         results.users.push(user);
       } catch (error) {
         results.failed++;
         results.errors.push({
           email: userData.email,
-          name: `${userData.firstName} ${userData.lastName}`,
+          name: `${userData.firstName} ${userData.lastName || ''}`.trim(),
           error: error instanceof Error ? error.message : 'Failed to create user',
         });
       }
+    }
+
+    if (results.success > 0) {
+      await logActivity(
+        createdById || 'system',
+        'USER_BULK_CREATED',
+        `Bulk created ${results.success} user(s) (${results.failed} failed)`,
+        undefined,
+        { successCount: results.success, failedCount: results.failed }
+      );
     }
 
     return results;
@@ -163,11 +288,19 @@ class UserService {
           firstName: true,
           lastName: true,
           phone: true,
+          mobile: true,
           employeeId: true,
+          jobTitle: true,
+          site: true,
+          branch: true,
+          state: true,
+          departmentRaiserName: true,
+          reportingManagerName: true,
           role: true,
           roles: true,
           status: true,
           departmentId: true,
+          canViewTeamBucket: true,
           managerId: true,
           avatar: true,
           mfaEnabled: true,
@@ -202,11 +335,15 @@ class UserService {
         employeeId: true,
         jobTitle: true,
         site: true,
+        branch: true,
+        state: true,
         reportingManagerName: true,
+        departmentRaiserName: true,
         role: true,
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -249,6 +386,25 @@ class UserService {
       }
     }
 
+    if (data.employeeId !== undefined) {
+      const normEmployeeId = data.employeeId ? data.employeeId.trim() : null;
+      if (normEmployeeId) {
+        if (!user.employeeId || user.employeeId.toLowerCase() !== normEmployeeId.toLowerCase()) {
+          const existingByEmpId = await prisma.user.findFirst({
+            where: {
+              employeeId: { equals: normEmployeeId, mode: 'insensitive' },
+              id: { not: id },
+            },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          });
+          if (existingByEmpId) {
+            throw new Error(`Employee ID "${normEmployeeId}" is already in use by ${existingByEmpId.firstName} ${existingByEmpId.lastName} (${existingByEmpId.email})`);
+          }
+        }
+      }
+      data.employeeId = normEmployeeId;
+    }
+
     if (data.roles !== undefined && data.roles.length > 0) {
       const roles = Array.from(new Set(data.roles));
       data.roles = roles;
@@ -282,11 +438,15 @@ class UserService {
         employeeId: true,
         jobTitle: true,
         site: true,
+        branch: true,
+        state: true,
         reportingManagerName: true,
+        departmentRaiserName: true,
         role: true,
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -531,6 +691,7 @@ class UserService {
           { firstName: { contains: query, mode: 'insensitive' } },
           { lastName: { contains: query, mode: 'insensitive' } },
           { email: { contains: query, mode: 'insensitive' } },
+          { employeeId: { contains: query, mode: 'insensitive' } },
         ],
         status: UserStatus.ACTIVE,
       },
@@ -568,12 +729,14 @@ class UserService {
     if (params.status) where.status = params.status;
     if (params.departmentId) where.departmentId = params.departmentId;
     if (params.managerId) where.managerId = params.managerId;
+    if (params.canViewTeamBucket !== undefined) where.canViewTeamBucket = params.canViewTeamBucket;
 
     if (params.search) {
       where.OR = [
         { firstName: { contains: params.search, mode: 'insensitive' } },
         { lastName: { contains: params.search, mode: 'insensitive' } },
         { email: { contains: params.search, mode: 'insensitive' } },
+        { employeeId: { contains: params.search, mode: 'insensitive' } },
       ];
     }
 

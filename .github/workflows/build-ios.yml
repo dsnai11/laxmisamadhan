@@ -6,16 +6,32 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/build-ios.yml'
+      - 'pnpm-workspace.yaml'
   workflow_dispatch:
 
 jobs:
   build-ipa:
     name: Build iOS App & IPA
-    runs-on: macos-14
+    runs-on: macos-15
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Verify Xcode Version & Platforms
+        run: |
+          echo "Available Xcode installations:"
+          ls -la /Applications/ | grep -i xcode || true
+          if [ -d "/Applications/Xcode.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode.app"
+          fi
+          echo "Active Developer Directory:"
+          xcode-select -p
+          xcodebuild -version
+          echo "Installed SDKs:"
+          xcodebuild -showsdks
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,7 +45,9 @@ jobs:
 
       - name: Install Frontend Dependencies
         working-directory: frontend
-        run: pnpm install --no-frozen-lockfile
+        run: |
+          pnpm config set node-linker hoisted
+          pnpm install --no-frozen-lockfile --ignore-workspace --shamefully-hoist
 
       - name: Build Web Frontend
         working-directory: frontend
@@ -42,18 +60,10 @@ jobs:
         working-directory: frontend
         run: npx cap sync ios
 
-      - name: Install CocoaPods Dependencies (if Podfile exists)
+      - name: Resolve Xcode Package Dependencies
         working-directory: frontend/ios/App
         run: |
-          set -e
-          if [ -f Podfile ]; then
-            if ! command -v pod >/dev/null 2>&1; then
-              gem install cocoapods --no-document || brew install cocoapods
-            fi
-            pod install --repo-update
-          else
-            echo "No Podfile found; skipping pod install"
-          fi
+          xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App || true
 
       - name: Build & Package iOS App into IPA
         working-directory: frontend/ios/App
@@ -62,49 +72,52 @@ jobs:
           echo "Working dir: $(pwd)"
           ls -la
 
-          # Choose workspace or project (.xcworkspace and .xcodeproj are bundle directories)
-          if [ -d App.xcworkspace ] || [ -e App.xcworkspace ]; then
-            WORKSPACE="App.xcworkspace"
-            SCHEME="App"
-            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
-          elif [ -d App.xcodeproj ] || [ -e App.xcodeproj ]; then
-            PROJECT="App.xcodeproj"
-            SCHEME="App"
-            BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
-          elif compgen -G "*.xcworkspace" > /dev/null; then
-            WORKSPACE=$(ls -d *.xcworkspace | head -n1)
-            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-            BUILD_CMD=(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME")
-          elif compgen -G "*.xcodeproj" > /dev/null; then
-            PROJECT=$(ls -d *.xcodeproj | head -n1)
-            SCHEME=$(basename "$PROJECT" .xcodeproj)
-            BUILD_CMD=(xcodebuild -project "$PROJECT" -scheme "$SCHEME")
-          else
-            echo "No .xcworkspace or .xcodeproj found in $(pwd)" >&2
-            ls -la
-            exit 1
-          fi
+          echo "Listing available Xcode projects, targets, and schemes:"
+          xcodebuild -list -project App.xcodeproj || true
 
-          echo "Using build target: ${BUILD_CMD[*]}"
-          "${BUILD_CMD[@]}" \
+          echo "Listing available destinations for App scheme:"
+          xcodebuild -showdestinations -project App.xcodeproj -scheme App || true
+
+          # Build release binary for iOS device
+          echo "Building iOS App release binary..."
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
             -configuration Release \
+            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath App.xcarchive \
-            archive \
+            -derivedDataPath build \
+            build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO || \
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
-          # Package into .ipa using whatever .app was produced
-          APP_PATH=$(find App.xcarchive/Products/Applications -name "*.app" -maxdepth 2 | head -n1 || true)
+          # Locate compiled .app inside build directory
+          APP_PATH=$(find build/Build/Products -name "*.app" | head -n1 || true)
           if [ -z "$APP_PATH" ]; then
-            echo "No .app found under App.xcarchive/Products/Applications" >&2
-            ls -R App.xcarchive || true
+            echo "Searching for any .app in build directory..." >&2
+            find build -name "*.app" || true
             exit 1
           fi
 
-          echo "Found app: $APP_PATH"
-          rm -rf Payload
+          echo "Found compiled app at: $APP_PATH"
+          rm -rf Payload LaxmiSamadhan.ipa
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r LaxmiSamadhan.ipa Payload/
@@ -116,3 +129,16 @@ jobs:
           path: frontend/ios/App/LaxmiSamadhan.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish iOS IPA to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: latest-mobile-build
+          name: "Laxmi Samadhan Latest Mobile Build (APK, AAB & IPA)"
+          draft: false
+          prerelease: false
+          files: |
+            frontend/ios/App/LaxmiSamadhan.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

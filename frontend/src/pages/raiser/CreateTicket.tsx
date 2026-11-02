@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -7,18 +7,22 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { formatFileSize, humanize } from '@utils/helpers';
-import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader } from '@components/common/ui';
+import { formatDuration, formatFileSize, humanize, isAudioFile } from '@utils/helpers';
+import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader, PriorityBadge } from '@components/common/ui';
+import { VoiceTypingControl, VoiceMessageRecorder } from '@components/common/VoiceInput';
+import {
+  HARDWARE_PRESET_SUB_CATEGORIES,
+  SOFTWARE_PRESET_SUB_CATEGORIES,
+} from '@components/admin/CategoryConfigManager';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 const schema = z.object({
-  departmentId: z.string().min(1, 'Please select a department'),
-  category: z.string().min(1, 'Please select a category'),
-  subCategory: z.string().optional(),
-  subIssue: z.string().optional(),
+  departmentId: z.string().trim().min(1, 'Please select a department'),
+  category: z.string().trim().min(1, 'Please select a category'),
+  subCategory: z.string().trim().min(1, 'Please select a System / Module (Sub Category)'),
   title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200, 'Title is too long'),
-  description: z.string().trim().min(5, 'Please enter a description').max(10000),
+  description: z.string().trim().min(5, 'Please enter a description (at least 5 characters)').max(10000),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -35,15 +39,20 @@ export default function CreateTicket() {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { departmentId: user?.departmentId || '', category: '', subCategory: '', subIssue: '', title: '', description: '' },
+    defaultValues: { departmentId: user?.departmentId || '', category: '', subCategory: '', title: '', description: '' },
   });
 
   const watchedDept = watch('departmentId');
   const watchedCategory = watch('category');
   const watchedSubCategory = watch('subCategory');
+
+  useEffect(() => {
+    setValue('subCategory', '');
+  }, [watchedDept, watchedCategory, setValue]);
 
   const { data: deptCategoryConfigs } = useQuery<any[]>({
     queryKey: ['category-configs', watchedDept],
@@ -57,6 +66,11 @@ export default function CreateTicket() {
     enabled: !!watchedDept,
   });
 
+  const { data: slaPolicies } = useQuery<any[]>({
+    queryKey: ['sla-policies'],
+    queryFn: () => api.getSLAPolicies(),
+  });
+
   // Compute dynamic sub-categories / systems set up by Department Head
   const activeConfigs = (deptCategoryConfigs || []).filter((c) => c.isActive !== false);
   const currentCategoryConfig = activeConfigs.find((c) => c.category === watchedCategory);
@@ -65,13 +79,28 @@ export default function CreateTicket() {
   const mappedTeamId = watchedSubCategory ? subCategoryTeams[watchedSubCategory] : undefined;
   const assignedTeam = (deptTeams || []).find((t: any) => t.id === mappedTeamId);
 
-  const dynamicSubCategories: string[] = Array.isArray(categoryFormFields.subCategories) && categoryFormFields.subCategories.length > 0
-    ? categoryFormFields.subCategories
+  const selectedDeptObj = (departments || []).find((d: any) => d.id === watchedDept);
+  const isHwDept = selectedDeptObj?.name?.toLowerCase().includes('hardware') || watchedCategory === 'HARDWARE_REQUEST';
+  const isSwDept = selectedDeptObj?.name?.toLowerCase().includes('software') || watchedCategory === 'SOFTWARE_REQUEST';
+
+  const fallbackSubCats = isSwDept
+    ? SOFTWARE_PRESET_SUB_CATEGORIES
+    : isHwDept
+    ? HARDWARE_PRESET_SUB_CATEGORIES
     : ['LOS', 'LMS', 'CRM', 'CLU-collection', 'Desktop', 'Laptop', 'Peripheral', 'Software', 'Network'];
 
-  const dynamicSubIssues: string[] = watchedSubCategory
-    ? (categoryFormFields.subIssues?.[watchedSubCategory] || categoryFormFields.items?.[watchedSubCategory] || [])
-    : [];
+  const dynamicSubCategories: string[] = Array.isArray(categoryFormFields.subCategories) && categoryFormFields.subCategories.length > 0
+    ? categoryFormFields.subCategories
+    : fallbackSubCats;
+
+  const matchingSLA = (slaPolicies || []).find((p: any) => {
+    if (!p.isActive) return false;
+    const matchesDept = !p.departmentId || p.departmentId === watchedDept;
+    if (!matchesDept) return false;
+    const sub = p.subCategory?.toLowerCase();
+    if (watchedSubCategory && sub === watchedSubCategory.toLowerCase()) return true;
+    return false;
+  });
 
   const onFilesSelected = (list: FileList | null) => {
     if (!list) return;
@@ -90,8 +119,6 @@ export default function CreateTicket() {
         departmentId: values.departmentId,
         category: values.category as any,
         subCategory: values.subCategory,
-        subIssue: values.subIssue,
-        item: values.subIssue,
         title: values.title,
         description: values.description,
         priority: 'MEDIUM',
@@ -123,7 +150,7 @@ export default function CreateTicket() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="card p-4 sm:p-6 space-y-4 sm:space-y-5" noValidate>
         {/* 1. Department */}
-        <Field label="Department" error={errors.departmentId?.message}>
+        <Field label="Department" required error={errors.departmentId?.message}>
           <select className="input" {...register('departmentId')}>
             <option value="">Select Department...</option>
             {(departments || []).map((d) => (
@@ -136,7 +163,7 @@ export default function CreateTicket() {
 
         {/* 2. Category & Sub Category / System (LOS, LMS, CRM, CLU-collection...) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="*Category" error={errors.category?.message}>
+          <Field label="Category" required error={errors.category?.message}>
             <select className="input" {...register('category')}>
               <option value="">Select Category...</option>
               {activeConfigs.length > 0 ? (
@@ -163,6 +190,8 @@ export default function CreateTicket() {
 
           <Field
             label="System / Module (Sub Category)"
+            required
+            error={errors.subCategory?.message}
             hint={assignedTeam ? `Assigned to: ${assignedTeam.name}` : undefined}
           >
             <select className="input" {...register('subCategory')}>
@@ -180,40 +209,62 @@ export default function CreateTicket() {
           </Field>
         </div>
 
-        {/* Sub-Issue (Specific Problem) - dependent on selected Sub Category */}
-        {watchedSubCategory && (
-          <Field
-            label="Sub-Issue (Specific Problem)"
-            hint={dynamicSubIssues.length > 0 ? `Specific issue related to "${watchedSubCategory}"` : `Specific issue under "${watchedSubCategory}"`}
-          >
-            {dynamicSubIssues.length > 0 ? (
-              <select className="input" {...register('subIssue')}>
-                <option value="">Select Sub-Issue...</option>
-                {dynamicSubIssues.map((si) => (
-                  <option key={si} value={si}>
-                    {si}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="input"
-                placeholder={`Enter specific issue under "${watchedSubCategory}"...`}
-                {...register('subIssue')}
-              />
-            )}
-          </Field>
+        {/* Dynamic SLA Guarantee Banner */}
+        {matchingSLA && (
+          <div className="rounded-xl p-4 bg-gradient-to-r from-blue-50 to-indigo-50/60 dark:from-slate-800 dark:to-slate-800/80 border border-blue-200/80 dark:border-blue-900/40 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white font-bold shadow-xs">
+                ⏱️
+              </span>
+              <div>
+                <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>SLA Guarantee: {matchingSLA.name}</span>
+                  <PriorityBadge priority={matchingSLA.priority} />
+                </div>
+                <div className="text-gray-600 dark:text-gray-300 mt-0.5">
+                  Initial Response: <strong className="text-gray-900 dark:text-white">{formatDuration(matchingSLA.responseTimeMins)}</strong> · Target Resolution: <strong className="text-gray-900 dark:text-white">{formatDuration(matchingSLA.resolutionTimeMins)}</strong>
+                  {matchingSLA.businessHoursOnly && ' (Business hours)'}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-md border border-gray-200 dark:border-slate-700 font-medium">
+              Escalation: L1 Support → L2 Expert → L3 Mgr (75%) → L4 OEM
+            </div>
+          </div>
         )}
 
         {/* 3. Title / Subject */}
-        <Field label="Title / Subject" error={errors.title?.message}>
+        <Field label="Title / Subject" required error={errors.title?.message}>
           <input className="input" placeholder="e.g. Issue in LOS login or AFC4719 - MOUSE ISSUE" {...register('title')} />
         </Field>
 
         {/* 4. Description */}
-        <Field label="Description" error={errors.description?.message} hint="What happened, what you expected, and any error messages you saw.">
-          <textarea className="input min-h-[140px]" placeholder="Enter ticket description..." {...register('description')} />
+        <Field label="Description" required error={errors.description?.message} hint="What happened, what you expected, and any error messages you saw.">
+          <div className="space-y-2">
+            <VoiceTypingControl
+              value={watch('description') || ''}
+              onChange={(newText) => setValue('description', newText, { shouldValidate: true })}
+              disabled={submitting}
+            />
+            <textarea
+              className="input min-h-[140px]"
+              placeholder="Enter ticket description or use 'Voice Type' to dictate..."
+              {...register('description')}
+            />
+          </div>
         </Field>
+
+        {/* Voice Message Recorder (Audio Note) */}
+        <VoiceMessageRecorder
+          disabled={submitting}
+          attachedVoiceFiles={files.filter((f) => isAudioFile(f.type, f.name))}
+          onAudioReady={(audioFile) => {
+            setFiles((prev) => [...prev, audioFile].slice(0, 10));
+          }}
+          onAudioRemoved={(fileName) => {
+            setFiles((prev) => prev.filter((f) => f.name !== fileName));
+          }}
+        />
 
         {/* 5. Attachments (Optional) */}
         <Field label="Attachments (Optional)" hint={`Optional. Up to 10 files, ${formatFileSize(MAX_FILE_SIZE)} each. Images, PDF, Word or text.`}>
@@ -229,9 +280,11 @@ export default function CreateTicket() {
           {files.length > 0 && (
             <ul className="mt-3 space-y-1">
               {files.map((f, i) => (
-                <li key={`${f.name}-${i}`} className="flex items-center justify-between text-xs sm:text-sm bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
-                  <span className="truncate font-medium text-gray-700">
-                    {f.name} <span className="text-gray-400 font-normal">· {formatFileSize(f.size)}</span>
+                <li key={`${f.name}-${i}`} className="flex items-center justify-between text-xs sm:text-sm bg-gray-50 dark:bg-slate-800 rounded-lg px-3 py-2 border border-gray-200 dark:border-slate-700">
+                  <span className="truncate font-medium text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                    <span>{isAudioFile(f.type, f.name) ? '🎙️' : '📎'}</span>
+                    <span className="truncate">{f.name}</span>
+                    <span className="text-gray-400 font-normal">· {formatFileSize(f.size)}</span>
                   </span>
                   <button type="button" className="text-danger-600 hover:underline text-xs font-semibold shrink-0 ml-2" onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}>
                     Remove

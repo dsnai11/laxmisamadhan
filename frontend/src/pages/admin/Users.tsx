@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { formatRelativeTime, humanize } from '@utils/helpers';
+import { formatRelativeTime, humanize, cn } from '@utils/helpers';
 import {
   assignableRoles,
   Avatar,
@@ -28,35 +28,48 @@ const statusBadge: Record<string, string> = {
   PENDING_VERIFICATION: 'badge-warning',
 };
 
-const emptyForm = { firstName: '', lastName: '', email: '', phone: '', employeeId: '', role: 'RAISER', roles: ['RAISER'], departmentId: '', temporaryPassword: '' };
+const emptyForm = { firstName: '', lastName: '', email: '', phone: '', employeeId: '', role: 'RAISER', roles: ['RAISER'], departmentId: '', temporaryPassword: '', canViewTeamBucket: false };
 
 interface BulkUserRow {
   id: string;
-  employeeId?: string;
+  employeeId: string;
   firstName: string;
-  lastName: string;
-  email: string;
+  departmentName: string;
+  departmentRaiserName: string;
+  designations: string;
+  branch: string;
+  state: string;
   phone: string;
+  email: string;
   role: string;
-  departmentId: string;
-  temporaryPassword?: string;
+  temporaryPassword: string;
 }
 
 export default function AdminUsers() {
   const { user: me } = useAuth();
   const qc = useQueryClient();
-  const isOrgWide = ['SUPER_ADMIN', 'ADMIN'].includes(me?.role || '');
+  const myRoles = Array.from(new Set([
+    ...(me?.role ? [me.role] : []),
+    ...((me as any)?.roles || []),
+  ]));
+  const isSuperAdmin = myRoles.includes('SUPER_ADMIN');
+  const isOrgWide = isSuperAdmin || myRoles.includes('ADMIN');
+  const roles = isSuperAdmin ? ROLE_OPTIONS : assignableRoles(me?.role);
+
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [teamBucketFilter, setTeamBucketFilter] = useState('');
+  const [togglingBucketId, setTogglingBucketId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Delete user state
   const [deletingUser, setDeletingUser] = useState<any | null>(null);
@@ -66,8 +79,8 @@ export default function AdminUsers() {
   const [bulkRows, setBulkRows] = useState<BulkUserRow[]>([]);
   const [bulkDefaultRole, setBulkDefaultRole] = useState('RAISER');
   const [bulkDefaultDept, setBulkDefaultDept] = useState('');
-  const [idPrefix, setIdPrefix] = useState('LIFC-');
-  const [idStartNum, setIdStartNum] = useState(1001);
+  const [idPrefix, setIdPrefix] = useState('100');
+  const [idStartNum, setIdStartNum] = useState(1);
   const [showIdGen, setShowIdGen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,19 +90,40 @@ export default function AdminUsers() {
   }, [searchInput]);
 
   const { data: departments } = useQuery({ queryKey: ['departments'], queryFn: () => api.getDepartments() });
-  const params = { page, limit: 15, ...(search && { search }), ...(role && { role }), ...(status && { status }), ...(departmentId && { departmentId }) };
+  const params = {
+    page,
+    limit: 15,
+    ...(search && { search }),
+    ...(role && { role }),
+    ...(status && { status }),
+    ...(departmentId && { departmentId }),
+    ...(teamBucketFilter ? { canViewTeamBucket: teamBucketFilter === 'granted' } : {})
+  };
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-users', params],
     queryFn: () => api.getUsers(params),
     placeholderData: keepPreviousData,
   });
   const users: any[] = data?.data || [];
-  const myRoles = Array.from(new Set([
-    ...(me?.role ? [me.role] : []),
-    ...((me as any)?.roles || []),
-  ]));
-  const isSuperAdmin = myRoles.includes('SUPER_ADMIN');
-  const roles = isSuperAdmin ? ROLE_OPTIONS : assignableRoles(me?.role);
+
+  const toggleTeamBucket = async (targetUser: any) => {
+    if (!isSuperAdmin || togglingBucketId) return;
+    setTogglingBucketId(targetUser.id);
+    const nextVal = !targetUser.canViewTeamBucket;
+    try {
+      await api.updateUser(targetUser.id, { canViewTeamBucket: nextVal });
+      toast.success(
+        nextVal
+          ? `Team Bucket access granted to ${targetUser.firstName} ${targetUser.lastName}`
+          : `Team Bucket access revoked for ${targetUser.firstName} ${targetUser.lastName}`
+      );
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to update Team Bucket access');
+    } finally {
+      setTogglingBucketId(null);
+    }
+  };
 
   const openCreate = () => {
     const initialRole = roles.includes('RAISER') ? 'RAISER' : roles[0] || 'RAISER';
@@ -104,12 +138,37 @@ export default function AdminUsers() {
 
   const openBulk = () => {
     const defRole = roles.includes('RAISER') ? 'RAISER' : roles[0] || 'RAISER';
-    const defDept = isOrgWide ? '' : me?.departmentId || '';
     setBulkDefaultRole(defRole);
-    setBulkDefaultDept(defDept);
+    setBulkDefaultDept('');
     setBulkRows([
-      { id: '1', employeeId: `${idPrefix}${idStartNum}`, firstName: '', lastName: '', email: '', phone: '', role: defRole, departmentId: defDept, temporaryPassword: 'LaxmiUser@123' },
-      { id: '2', employeeId: `${idPrefix}${idStartNum + 1}`, firstName: '', lastName: '', email: '', phone: '', role: defRole, departmentId: defDept, temporaryPassword: 'LaxmiUser@123' },
+      {
+        id: '1',
+        employeeId: '1001',
+        firstName: 'PUSHPENDRA PRATAP SINGH',
+        departmentName: '',
+        departmentRaiserName: 'COLLECTION',
+        designations: 'MANAGER',
+        branch: 'ROSHAN TOWER JAIPUR HO',
+        state: 'RAJASTHAN',
+        phone: '9799954635',
+        email: 'pushpendra.gora@lifc.in',
+        role: defRole,
+        temporaryPassword: 'LaxmiUser@123',
+      },
+      {
+        id: '2',
+        employeeId: '1002',
+        firstName: '',
+        departmentName: '',
+        departmentRaiserName: '',
+        designations: '',
+        branch: '',
+        state: '',
+        phone: '',
+        email: '',
+        role: defRole,
+        temporaryPassword: 'LaxmiUser@123',
+      },
     ]);
     setBulkOpen(true);
   };
@@ -158,6 +217,7 @@ export default function AdminUsers() {
   };
 
   // Bulk handlers
+  // Bulk handlers
   const addBulkRow = () => {
     const nextIdx = bulkRows.length;
     const nextId = `${idPrefix}${idStartNum + nextIdx}`;
@@ -167,11 +227,14 @@ export default function AdminUsers() {
         id: Math.random().toString(36).substring(2, 9),
         employeeId: nextId,
         firstName: '',
-        lastName: '',
-        email: '',
+        departmentName: bulkDefaultDept,
+        departmentRaiserName: '',
+        designations: '',
+        branch: '',
+        state: '',
         phone: '',
+        email: '',
         role: bulkDefaultRole,
-        departmentId: bulkDefaultDept,
         temporaryPassword: 'LaxmiUser@123',
       },
     ]);
@@ -198,9 +261,9 @@ export default function AdminUsers() {
     setBulkRows((prev) => prev.filter((r) => r.id !== id));
   };
 
-  const applyDeptToAll = (deptId: string) => {
-    setBulkDefaultDept(deptId);
-    setBulkRows((prev) => prev.map((r) => ({ ...r, departmentId: deptId })));
+  const applyDeptToAll = (deptName: string) => {
+    setBulkDefaultDept(deptName);
+    setBulkRows((prev) => prev.map((r) => ({ ...r, departmentName: deptName })));
   };
 
   const applyRoleToAll = (r: string) => {
@@ -209,8 +272,8 @@ export default function AdminUsers() {
   };
 
   const downloadCSVTemplate = () => {
-    const csvHeader = 'employeeId,firstName,lastName,email,phone,role,departmentId,temporaryPassword\n';
-    const sampleRows = `LIFC-1001,Rahul,Sharma,rahul.sharma@laxmi.com,9876543210,RAISER,,LaxmiUser@123\nLIFC-1002,Priya,Verma,priya.verma@laxmi.com,9876543211,AGENT,,LaxmiUser@123\n`;
+    const csvHeader = 'employeeId,firstName,department name,department raiser name,desginations,BRANCH,STATE,MOBILE NO,Mail Id\n';
+    const sampleRows = `1001,PUSHPENDRA PRATAP SINGH,,COLLECTION,MANAGER,ROSHAN TOWER JAIPUR HO,RAJASTHAN,9799954635,pushpendra.gora@lifc.in\n1002,PRIYA VERMA,IT SUPPORT,VIKAS GUPTA,EXECUTIVE,MUMBAI HO,MAHARASHTRA,9876543211,priya.verma@lifc.in\n`;
     const blob = new Blob([csvHeader + sampleRows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -232,89 +295,154 @@ export default function AdminUsers() {
 
       const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
       if (lines.length < 2) {
-        toast.error('CSV file is empty or missing headers');
+        toast.error('File is empty or missing headers');
         return;
       }
 
-      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
-      const idIdx = headers.indexOf('employeeid') !== -1 ? headers.indexOf('employeeid') : headers.indexOf('id');
-      const fnIdx = headers.indexOf('firstname');
-      const lnIdx = headers.indexOf('lastname');
-      const emailIdx = headers.indexOf('email');
-      const phoneIdx = headers.indexOf('phone');
-      const roleIdx = headers.indexOf('role');
-      const deptIdx = headers.indexOf('departmentid');
-      const passIdx = headers.indexOf('temporarypassword');
+      const delimiter = lines[0].includes('\t') ? '\t' : ',';
+      const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/[\s_-]+/g, ''));
 
-      if (fnIdx === -1 || lnIdx === -1 || emailIdx === -1) {
-        toast.error('CSV must contain columns: firstName, lastName, email');
-        return;
-      }
+      const findCol = (...aliases: string[]) => {
+        for (const alias of aliases) {
+          const norm = alias.toLowerCase().replace(/[\s_-]+/g, '');
+          const idx = headers.indexOf(norm);
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
+
+      const idIdx = findCol('employeeid', 'employee', 'empid', 'id', 'emplo', 'code');
+      const fnIdx = findCol('firstname', 'name', 'fullname', 'first_name', 'employeename');
+      const deptIdx = findCol('departmentname', 'department', 'deptname', 'dept');
+      const raiserIdx = findCol('departmentraisername', 'departmentraiser', 'raisername', 'raiser');
+      const desigIdx = findCol('desginations', 'designations', 'designation', 'jobtitle', 'title');
+      const branchIdx = findCol('branch', 'branchname', 'site', 'location');
+      const stateIdx = findCol('state', 'region');
+      const phoneIdx = findCol('mobileno', 'mobile', 'phone', 'phonenumber');
+      const emailIdx = findCol('mailid', 'mail_id', 'email', 'emailaddress', 'mail');
+      const roleIdx = findCol('role', 'userrole');
+      const passIdx = findCol('temporarypassword', 'temppassword', 'password', 'pass');
+
+      const usePositional = emailIdx === -1 && fnIdx === -1;
 
       const parsedRows: BulkUserRow[] = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map((c) => c.trim());
-        if (cols.length < 3 || !cols[emailIdx]) continue;
+        const rawLine = lines[i];
+        const cols = rawLine.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ''));
+        if (cols.length < 2) continue;
+
+        const employeeId = (usePositional ? cols[0] : idIdx !== -1 ? cols[idIdx] : '') || `${idPrefix}${idStartNum + i - 1}`;
+        const firstName = usePositional ? cols[1] : (fnIdx !== -1 ? cols[fnIdx] : '');
+        const departmentName = (usePositional ? cols[2] : (deptIdx !== -1 ? cols[deptIdx] : '')) || '';
+        const departmentRaiserName = usePositional ? cols[3] : (raiserIdx !== -1 ? cols[raiserIdx] : '');
+        const designations = usePositional ? cols[4] : (desigIdx !== -1 ? cols[desigIdx] : '');
+        const branch = usePositional ? cols[5] : (branchIdx !== -1 ? cols[branchIdx] : '');
+        const state = usePositional ? cols[6] : (stateIdx !== -1 ? cols[stateIdx] : '');
+        const phone = usePositional ? cols[7] : (phoneIdx !== -1 ? cols[phoneIdx] : '');
+        const email = usePositional ? cols[8] : (emailIdx !== -1 ? cols[emailIdx] : '');
+        const roleVal = roleIdx !== -1 && cols[roleIdx] ? cols[roleIdx] : bulkDefaultRole;
+        const temporaryPassword = (passIdx !== -1 && cols[passIdx] ? cols[passIdx] : '') || 'LaxmiUser@123';
+
+        if (!email && !firstName) continue;
 
         parsedRows.push({
           id: Math.random().toString(36).substring(2, 9),
-          employeeId: idIdx !== -1 && cols[idIdx] ? cols[idIdx] : `${idPrefix}${idStartNum + i - 1}`,
-          firstName: cols[fnIdx] || '',
-          lastName: cols[lnIdx] || '',
-          email: cols[emailIdx] || '',
-          phone: phoneIdx !== -1 ? cols[phoneIdx] : '',
-          role: roleIdx !== -1 && cols[roleIdx] ? cols[roleIdx].toUpperCase() : bulkDefaultRole,
-          departmentId: deptIdx !== -1 && cols[deptIdx] ? cols[deptIdx] : bulkDefaultDept,
-          temporaryPassword: passIdx !== -1 && cols[passIdx] ? cols[passIdx] : 'LaxmiUser@123',
+          employeeId: employeeId || '',
+          firstName: firstName || '',
+          departmentName: departmentName || '',
+          departmentRaiserName: departmentRaiserName || '',
+          designations: designations || '',
+          branch: branch || '',
+          state: state || '',
+          phone: phone || '',
+          email: email || '',
+          role: roleVal ? roleVal.toUpperCase().replace(/\s+/g, '_') : bulkDefaultRole,
+          temporaryPassword,
         });
       }
 
       if (parsedRows.length === 0) {
-        toast.error('No valid user data found in CSV');
+        toast.error('No valid user data found in file');
         return;
       }
 
       setBulkRows(parsedRows);
-      toast.success(`Loaded ${parsedRows.length} users from CSV with User IDs`);
+      toast.success(`Loaded ${parsedRows.length} users successfully`);
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const executeBulkCreate = async () => {
-    const validUsers = bulkRows.filter((r) => r.firstName.trim() && r.lastName.trim() && r.email.trim());
+    const validUsers = bulkRows.filter((r) => r.firstName.trim() && r.email.trim());
     if (validUsers.length === 0) {
-      return toast.error('Please enter at least one valid user with first name, last name, and email');
+      return toast.error('Please enter at least one valid user with First Name and Mail Id');
+    }
+
+    const empIdSeen = new Set<string>();
+    const duplicateIds: string[] = [];
+    for (const u of validUsers) {
+      if (u.employeeId?.trim()) {
+        const idLower = u.employeeId.trim().toLowerCase();
+        if (empIdSeen.has(idLower)) {
+          duplicateIds.push(u.employeeId.trim());
+        }
+        empIdSeen.add(idLower);
+      }
+    }
+    if (duplicateIds.length > 0) {
+      return toast.error(`Duplicate Employee Code(s) found in list: ${duplicateIds.slice(0, 5).join(', ')}${duplicateIds.length > 5 ? '...' : ''}. Employee IDs must be unique.`);
     }
 
     setBulkSaving(true);
+    setImportProgress({ current: 0, total: validUsers.length });
+
     try {
       const payload = validUsers.map((r) => ({
+        employeeId: r.employeeId?.trim() || undefined,
         firstName: r.firstName.trim(),
-        lastName: r.lastName.trim(),
+        departmentName: r.departmentName?.trim() || undefined,
+        departmentRaiserName: r.departmentRaiserName?.trim() || undefined,
+        designations: r.designations?.trim() || undefined,
+        branch: r.branch?.trim() || undefined,
+        state: r.state?.trim() || undefined,
+        phone: r.phone?.trim() || undefined,
+        mobile: r.phone?.trim() || undefined,
         email: r.email.trim(),
-        ...(r.employeeId?.trim() && { employeeId: r.employeeId.trim() }),
-        ...(r.phone.trim() && { phone: r.phone.trim() }),
-        role: r.role,
-        ...(r.departmentId && { departmentId: r.departmentId }),
-        temporaryPassword: r.temporaryPassword || 'LaxmiUser@123',
+        role: r.role || 'RAISER',
+        temporaryPassword: r.temporaryPassword?.trim() || 'LaxmiUser@123',
         sendWelcomeEmail: false,
       }));
 
-      const res = await api.bulkCreateUsers(payload);
-      if (res.success > 0) {
-        toast.success(`Successfully created ${res.success} user(s)!`);
-      }
-      if (res.failed > 0) {
-        toast.error(`${res.failed} user(s) failed. Check details in logs/toast.`);
+      const BATCH_SIZE = 100;
+      let totalSuccess = 0;
+      let totalFailed = 0;
+      const allErrors: any[] = [];
+
+      for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+        const chunk = payload.slice(i, i + BATCH_SIZE);
+        const res = await api.bulkCreateUsers(chunk);
+        totalSuccess += res.success || 0;
+        totalFailed += res.failed || 0;
+        if (res.errors) allErrors.push(...res.errors);
+        setImportProgress({ current: Math.min(i + BATCH_SIZE, payload.length), total: payload.length });
       }
 
-      setBulkOpen(false);
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
+      if (totalSuccess > 0) {
+        toast.success(`Successfully imported ${totalSuccess} user(s)!`);
+        setBulkOpen(false);
+        setBulkRows([]);
+        qc.invalidateQueries({ queryKey: ['admin-users'] });
+      }
+      if (totalFailed > 0) {
+        const errorMsgs = allErrors.map((err: any) => `${err.name || err.email}: ${err.error}`).slice(0, 3).join('; ');
+        toast.error(`${totalFailed} user(s) failed. ${errorMsgs}`);
+      }
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
       setBulkSaving(false);
+      setImportProgress(null);
     }
   };
 
@@ -339,8 +467,8 @@ export default function AdminUsers() {
       />
 
       <div className="card">
-        <div className="p-4 border-b border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input className="input" placeholder="Search name or email" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Search users" />
+        <div className="p-4 border-b border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-3">
+          <input className="input" placeholder="Search name, email, or employee ID..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Search users" />
           <select className="input" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }} aria-label="Filter by role">
             <option value="">All roles</option>
             {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{humanize(r)}</option>)}
@@ -355,6 +483,11 @@ export default function AdminUsers() {
               {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           )}
+          <select className="input font-medium" value={teamBucketFilter} onChange={(e) => { setTeamBucketFilter(e.target.value); setPage(1); }} aria-label="Filter by Team Bucket access">
+            <option value="">All Team Bucket Access</option>
+            <option value="granted">⚡ Team Bucket: Granted</option>
+            <option value="restricted">🔒 Team Bucket: Restricted</option>
+          </select>
         </div>
 
         {isLoading ? <PageLoader /> : error ? <div className="p-4"><ErrorState error={error} onRetry={() => refetch()} /></div> : users.length === 0 ? (
@@ -368,6 +501,7 @@ export default function AdminUsers() {
                     <th>User</th>
                     <th>Role</th>
                     <th>Department</th>
+                    <th>Team Bucket Access</th>
                     <th>Status</th>
                     <th>Last login</th>
                     <th className="text-right">Actions</th>
@@ -388,7 +522,10 @@ export default function AdminUsers() {
                                 </span>
                               )}
                             </span>
-                            <span className="block text-xs text-gray-500">{u.email}</span>
+                            <span className="block text-xs text-gray-500 dark:text-slate-400">
+                              {u.email}
+                              {u.jobTitle && <span className="ml-1 text-primary-600 dark:text-primary-400 font-medium">({u.jobTitle})</span>}
+                            </span>
                           </span>
                         </Link>
                       </td>
@@ -404,7 +541,56 @@ export default function AdminUsers() {
                           ))}
                         </div>
                       </td>
-                      <td className="text-sm text-gray-600">{u.department?.name || '-'}</td>
+                      <td className="text-sm text-gray-600 dark:text-slate-300">
+                        <div>{u.department?.name || '-'}</div>
+                        {u.departmentRaiserName && (
+                          <div className="text-[11px] text-gray-400 dark:text-slate-500">Raiser: {u.departmentRaiserName}</div>
+                        )}
+                      </td>
+                      {/* Team Bucket Access Toggle Column */}
+                      <td>
+                        {u.role === 'SUPER_ADMIN' || (u.roles && u.roles.includes('SUPER_ADMIN')) ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            Super Admin (Always On)
+                          </span>
+                        ) : isSuperAdmin ? (
+                          <button
+                            type="button"
+                            disabled={togglingBucketId === u.id}
+                            onClick={() => toggleTeamBucket(u)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all border shadow-xs cursor-pointer',
+                              u.canViewTeamBucket
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700 hover:border-gray-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                            )}
+                            title={u.canViewTeamBucket ? 'Click to revoke Team Bucket access' : 'Click to grant Team Bucket access'}
+                          >
+                            {togglingBucketId === u.id ? (
+                              <span className="inline-block animate-spin">⏳</span>
+                            ) : u.canViewTeamBucket ? (
+                              <>
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                <span>Granted (Click to Revoke)</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
+                                <span>Restricted (Click to Grant)</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
+                            u.canViewTeamBucket
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              : 'bg-gray-50 text-gray-400 border-gray-200 dark:bg-slate-800 dark:text-slate-500'
+                          )}>
+                            {u.canViewTeamBucket ? 'Granted' : 'Restricted'}
+                          </span>
+                        )}
+                      </td>
                       <td><span className={`badge ${statusBadge[u.status] || 'badge-gray'}`}>{humanize(u.status)}</span></td>
                       <td className="text-sm text-gray-500">{u.lastLoginAt ? formatRelativeTime(u.lastLoginAt) : 'Never'}</td>
                       <td className="text-right whitespace-nowrap">
@@ -498,6 +684,22 @@ export default function AdminUsers() {
               {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
+          {isSuperAdmin && (
+            <div className="md:col-span-2">
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/40 hover:bg-gray-100/50 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.canViewTeamBucket}
+                  onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">Grant Team Bucket Access</span>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Allow this user to access the team queue and view team tickets</p>
+                </div>
+              </label>
+            </div>
+          )}
           <div className="md:col-span-2">
             <Field label="Temporary password" hint="At least 8 characters. Share it with the user securely; they can change it after signing in.">
               <input type="text" className="input" autoComplete="off" value={form.temporaryPassword} onChange={(e) => setForm({ ...form, temporaryPassword: e.target.value })} />
@@ -509,16 +711,35 @@ export default function AdminUsers() {
       {/* Bulk User Modal */}
       <Modal
         open={bulkOpen}
-        onClose={() => setBulkOpen(false)}
+        onClose={() => !bulkSaving && setBulkOpen(false)}
         title="Bulk User Creation & ID Management"
         wide
         footer={
-          <>
-            <button className="btn-secondary" onClick={() => setBulkOpen(false)}>Cancel</button>
-            <button className="btn-primary" disabled={bulkSaving} onClick={executeBulkCreate}>
-              {bulkSaving ? 'Importing Users...' : `Import ${bulkRows.filter(r => r.firstName && r.lastName && r.email).length} Users`}
-            </button>
-          </>
+          <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
+            {importProgress ? (
+              <div className="w-full sm:w-auto flex-1 flex items-center gap-2">
+                <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-primary-600 h-2.5 rounded-full transition-all duration-200"
+                    style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-gray-700 dark:text-slate-300 whitespace-nowrap">
+                  {importProgress.current} / {importProgress.total} ({Math.round((importProgress.current / importProgress.total) * 100)}%)
+                </span>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">
+                {bulkRows.length > 0 ? `${bulkRows.filter(r => r.firstName && r.email).length} users ready to import` : ''}
+              </div>
+            )}
+            <div className="flex items-center gap-2 shrink-0">
+              <button className="btn-secondary" disabled={bulkSaving} onClick={() => setBulkOpen(false)}>Cancel</button>
+              <button className="btn-primary" disabled={bulkSaving || bulkRows.filter(r => r.firstName && r.email).length === 0} onClick={executeBulkCreate}>
+                {bulkSaving ? (importProgress ? `Importing (${importProgress.current}/${importProgress.total})...` : 'Importing Users...') : `Import ${bulkRows.filter(r => r.firstName && r.email).length} Users`}
+              </button>
+            </div>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -583,20 +804,21 @@ export default function AdminUsers() {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs text-gray-600">
+              <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-slate-300">
                 <span>Set All Dept:</span>
-                <select
-                  className="input text-xs py-1 px-2"
+                <input
+                  list="bulk-dept-options"
+                  className="input text-xs py-1 px-2 w-32"
+                  placeholder="Dept Name"
                   value={bulkDefaultDept}
-                  disabled={!isOrgWide}
                   onChange={(e) => applyDeptToAll(e.target.value)}
-                >
-                  <option value="">None</option>
-                  {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+                />
+                <datalist id="bulk-dept-options">
+                  {(departments || []).map((d) => <option key={d.id} value={d.name} />)}
+                </datalist>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs text-gray-600">
+              <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-slate-300">
                 <span>Set All Role:</span>
                 <select
                   className="input text-xs py-1 px-2"
@@ -609,31 +831,46 @@ export default function AdminUsers() {
             </div>
           </div>
 
+          {bulkRows.length > 50 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold">⚡ Fast Preview:</span>
+                <span>Showing first 50 rows of {bulkRows.length} users to keep page scrolling fast.</span>
+              </div>
+              <span className="font-bold bg-blue-100 dark:bg-blue-900 px-2 py-0.5 rounded text-blue-900 dark:text-blue-100">
+                All {bulkRows.length} users will be created
+              </span>
+            </div>
+          )}
+
           {/* User Rows Table */}
-          <div className="max-h-[380px] overflow-y-auto overflow-x-auto border border-gray-200 rounded-lg scrollbar-thin">
-            <table className="w-full text-xs text-left text-gray-700 min-w-[780px]">
-              <thead className="bg-gray-100 text-gray-600 font-semibold uppercase sticky top-0 z-10 border-b border-gray-200">
+          <div className="max-h-[380px] overflow-y-auto overflow-x-auto border border-gray-200 dark:border-slate-800 rounded-lg scrollbar-thin">
+            <table className="w-full text-xs text-left text-gray-700 dark:text-slate-200 min-w-[1300px]">
+              <thead className="bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 font-semibold uppercase sticky top-0 z-10 border-b border-gray-200 dark:border-slate-700 whitespace-nowrap">
                 <tr>
                   <th className="p-2 w-8">#</th>
-                  <th className="p-2 w-28">User / Emp ID</th>
-                  <th className="p-2">First Name *</th>
-                  <th className="p-2">Last Name *</th>
-                  <th className="p-2">Email *</th>
-                  <th className="p-2">Phone</th>
-                  <th className="p-2">Role</th>
-                  <th className="p-2">Department</th>
-                  <th className="p-2">Temp Pass</th>
+                  <th className="p-2 w-28">Employee ID</th>
+                  <th className="p-2 w-36">First Name *</th>
+                  <th className="p-2 w-32">Department Name</th>
+                  <th className="p-2 w-36">Department Raiser Name</th>
+                  <th className="p-2 w-28">Designations</th>
+                  <th className="p-2 w-36">Branch</th>
+                  <th className="p-2 w-28">State</th>
+                  <th className="p-2 w-28">Mobile No</th>
+                  <th className="p-2 w-44">Mail Id *</th>
+                  <th className="p-2 w-28">Role</th>
+                  <th className="p-2 w-28">Temp Pass</th>
                   <th className="p-2 w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                {bulkRows.map((row, idx) => (
+                {bulkRows.slice(0, 50).map((row, idx) => (
                   <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
                     <td className="p-2 text-center text-gray-400 font-mono">{idx + 1}</td>
                     <td className="p-1">
                       <input
-                        className="w-full input text-xs py-1 px-2 font-mono font-medium text-blue-700 bg-blue-50/40"
-                        placeholder="e.g. LIFC-1001"
+                        className="w-full input text-xs py-1 px-2 font-mono font-medium text-blue-700 bg-blue-50/40 dark:bg-blue-950/40 dark:text-blue-300"
+                        placeholder="e.g. 1001"
                         value={row.employeeId || ''}
                         onChange={(e) => updateBulkRow(row.id, 'employeeId', e.target.value)}
                       />
@@ -641,34 +878,67 @@ export default function AdminUsers() {
                     <td className="p-1">
                       <input
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="First Name"
+                        placeholder="First Name *"
                         value={row.firstName}
                         onChange={(e) => updateBulkRow(row.id, 'firstName', e.target.value)}
                       />
                     </td>
                     <td className="p-1">
                       <input
+                        list="bulk-dept-options"
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="Last Name"
-                        value={row.lastName}
-                        onChange={(e) => updateBulkRow(row.id, 'lastName', e.target.value)}
+                        placeholder="e.g. COLLECTION"
+                        value={row.departmentName}
+                        onChange={(e) => updateBulkRow(row.id, 'departmentName', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="e.g. COLLECTION"
+                        value={row.departmentRaiserName}
+                        onChange={(e) => updateBulkRow(row.id, 'departmentRaiserName', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="e.g. MANAGER"
+                        value={row.designations}
+                        onChange={(e) => updateBulkRow(row.id, 'designations', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="e.g. ROSHAN TOWER JAIPUR HO"
+                        value={row.branch || ''}
+                        onChange={(e) => updateBulkRow(row.id, 'branch', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="e.g. RAJASTHAN"
+                        value={row.state || ''}
+                        onChange={(e) => updateBulkRow(row.id, 'state', e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        className="w-full input text-xs py-1 px-2"
+                        placeholder="9799954635"
+                        value={row.phone}
+                        onChange={(e) => updateBulkRow(row.id, 'phone', e.target.value)}
                       />
                     </td>
                     <td className="p-1">
                       <input
                         type="email"
                         className="w-full input text-xs py-1 px-2"
-                        placeholder="email@laxmi.com"
+                        placeholder="pushpendra.gora@lifc.in *"
                         value={row.email}
                         onChange={(e) => updateBulkRow(row.id, 'email', e.target.value)}
-                      />
-                    </td>
-                    <td className="p-1">
-                      <input
-                        className="w-full input text-xs py-1 px-2"
-                        placeholder="Phone"
-                        value={row.phone}
-                        onChange={(e) => updateBulkRow(row.id, 'phone', e.target.value)}
                       />
                     </td>
                     <td className="p-1">
@@ -678,17 +948,6 @@ export default function AdminUsers() {
                         onChange={(e) => updateBulkRow(row.id, 'role', e.target.value)}
                       >
                         {roles.map((r) => <option key={r} value={r}>{humanize(r)}</option>)}
-                      </select>
-                    </td>
-                    <td className="p-1">
-                      <select
-                        className="w-full input text-xs py-1 px-2"
-                        value={row.departmentId}
-                        disabled={!isOrgWide}
-                        onChange={(e) => updateBulkRow(row.id, 'departmentId', e.target.value)}
-                      >
-                        <option value="">None</option>
-                        {(departments || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                     </td>
                     <td className="p-1">

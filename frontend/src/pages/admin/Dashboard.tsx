@@ -11,7 +11,8 @@ const formatNumber = (num: number) => {
 const statCards = [
   { name: 'Total Tickets', key: 'totalTickets', icon: TicketIcon, color: 'bg-blue-500', href: '/admin/tickets' },
   { name: 'Open Tickets', key: 'openTickets', icon: ClockIcon, color: 'bg-yellow-500', href: '/admin/tickets?status=OPEN' },
-  { name: 'Dependency on Client', key: 'inProgressTickets', icon: ChartBarIcon, color: 'bg-amber-500', href: '/admin/tickets?status=DEPENDENCY_ON_CLIENT' },
+  { name: 'Dependency on User', key: 'inProgressTickets', icon: ChartBarIcon, color: 'bg-amber-500', href: '/admin/tickets?status=DEPENDENCY_ON_CLIENT' },
+  { name: 'Dependency on Vendor', key: 'vendorTickets', icon: BuildingOfficeIcon, color: 'bg-purple-500', href: '/admin/tickets?status=DEPENDENCY_ON_VENDOR' },
   { name: 'Resolved', key: 'resolvedTickets', icon: CheckCircleIcon, color: 'bg-green-500', href: '/admin/tickets?status=RESOLVED' },
   { name: 'Critical', key: 'criticalTickets', icon: ExclamationTriangleIcon, color: 'bg-red-500', href: '/admin/tickets?priority=CRITICAL' },
   { name: 'SLA Breached', key: 'slaBreached', icon: ExclamationTriangleIcon, color: 'bg-orange-500', href: '/admin/tickets?slaStatus=BREACHED' },
@@ -27,8 +28,8 @@ export default function AdminDashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          {[...Array(6)].map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+          {[...Array(7)].map((_, i) => (
             <div key={i} className="card p-6 animate-pulse">
               <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
               <div className="h-8 bg-gray-200 rounded w-1/2"></div>
@@ -57,7 +58,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3 sm:gap-4">
         {statCards.map((card) => {
           const value = overview[card.key as keyof typeof overview] || 0;
           return (

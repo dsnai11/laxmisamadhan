@@ -2,16 +2,16 @@ import { z } from 'zod';
 import { TicketPriority, TicketCategory, TicketStatus } from '@prisma/client';
 
 export const ticketIdParamSchema = z.object({
-  id: z.string().uuid('Invalid ticket ID'),
+  id: z.string({ required_error: 'Invalid ticket ID' }).trim().min(1, 'Invalid ticket ID').max(100, 'Invalid ticket ID').regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID'),
 });
 
 export const createTicketSchema = z.object({
-  title: z.string().min(3, 'Title must be at least 3 characters').max(200),
-  description: z.string().min(5, 'Description must be at least 5 characters').max(10000),
+  title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200),
+  description: z.string().trim().min(5, 'Description must be at least 5 characters').max(10000),
   category: z.nativeEnum(TicketCategory),
-  subCategory: z.string().optional(),
-  subIssue: z.string().optional(),
-  item: z.string().optional(),
+  subCategory: z.string().trim().min(1, 'Sub-category is required'),
+  subIssue: z.string().optional().nullable(),
+  item: z.string().optional().nullable(),
   group: z.string().optional(),
   site: z.string().optional(),
   teamId: z.string().uuid().optional(),
@@ -30,12 +30,14 @@ export const updateTicketSchema = z.object({
   description: z.string().min(5, 'Description must be at least 5 characters').max(10000).optional(),
   category: z.nativeEnum(TicketCategory).optional(),
   subCategory: z.string().optional(),
-  subIssue: z.string().optional(),
-  item: z.string().optional(),
+  subIssue: z.string().optional().nullable(),
+  item: z.string().optional().nullable(),
   priority: z.nativeEnum(TicketPriority).optional(),
   status: z.nativeEnum(TicketStatus).optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),
+  departmentId: z.string().uuid().optional(),
+  transferReason: z.string().max(500).optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
   customFields: z.record(z.any()).optional(),
   assetIds: z.array(z.string().uuid()).optional(),
@@ -97,7 +99,7 @@ export const ticketQuerySchema = z.object({
 });
 
 export const bulkActionSchema = z.object({
-  ticketIds: z.array(z.string().uuid()).min(1, 'At least one ticket ID is required').max(100),
+  ticketIds: z.array(z.string().trim().regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID')).min(1, 'At least one ticket ID is required').max(100),
   action: z.enum(['assign', 'status', 'priority', 'department', 'tags', 'delete', 'export', 'merge', 'link']),
   data: z.record(z.any()),
 });
@@ -115,17 +117,19 @@ export const slaPolicySchema = z.object({
   excludesWeekends: z.boolean().default(true),
   holidays: z.array(z.string()).optional(),
   escalationRules: z.array(z.object({
-    trigger: z.enum(['response', 'resolution']),
-    timeBeforeMins: z.number().int().positive(),
+    level: z.string().optional(),
+    trigger: z.enum(['response', 'resolution']).default('resolution'),
+    timeBeforeMins: z.number().int().nonnegative().default(0),
     action: z.enum(['notify', 'escalate', 'reassign']),
     notifyUserIds: z.array(z.string().uuid()).optional(),
-    escalateToUserId: z.string().uuid().optional(),
-    reassignToUserId: z.string().uuid().optional(),
-  })).optional(),
+    escalateToUserId: z.string().uuid().optional().nullable(),
+    reassignToUserId: z.string().uuid().optional().nullable(),
+    description: z.string().optional(),
+  })).optional().nullable(),
 });
 
 export const approvalSchema = z.object({
-  ticketId: z.string().uuid('Invalid ticket ID'),
+  ticketId: z.string().trim().regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID'),
   approverId: z.string().uuid('Invalid approver ID'),
   title: z.string().min(1, 'Title is required').max(200),
   description: z.string().max(5000),

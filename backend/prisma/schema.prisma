@@ -29,6 +29,7 @@ enum TicketStatus {
   RESOLVED
   REOPENED
   DEPENDENCY_ON_CLIENT
+  DEPENDENCY_ON_VENDOR
 }
 
 enum TicketPriority {
@@ -106,10 +107,13 @@ model User {
   lastName          String
   phone             String?
   mobile            String?
-  employeeId        String?
+  employeeId        String?   @unique
   jobTitle          String?
   site              String?
+  branch            String?
+  state             String?
   reportingManagerName String?
+  departmentRaiserName String?
   avatar            String?
   role              UserRole   @default(RAISER)
   roles             UserRole[] @default([])
@@ -126,6 +130,7 @@ model User {
   passwordResetToken String?
   passwordResetExpires DateTime?
   departmentId      String?
+  canViewTeamBucket Boolean   @default(false)
   department        Department? @relation("UserDepartment", fields: [departmentId], references: [id])
   managerId         String?
   manager           User?     @relation("UserManager", fields: [managerId], references: [id])

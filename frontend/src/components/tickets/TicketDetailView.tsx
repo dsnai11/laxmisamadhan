@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
-import { downloadBlob, formatDate, formatFileSize, formatRelativeTime, getFileIcon, humanize } from '@utils/helpers';
+import { downloadBlob, formatDate, formatFileSize, formatRelativeTime, getFileIcon, humanize, isAudioFile } from '@utils/helpers';
+import { AudioAttachmentPlayer, VoiceTypingControl } from '@components/common/VoiceInput';
 import ApprovalsPanel from '@components/tickets/ApprovalsPanel';
 import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';
@@ -27,13 +28,14 @@ import {
 } from '@components/common/ui';
 
 const TRANSITIONS: Record<string, string[]> = {
-  OPEN: ['DEPENDENCY_ON_CLIENT', 'RESOLVED'],
-  DEPENDENCY_ON_CLIENT: ['OPEN', 'RESOLVED'],
+  OPEN: ['DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'RESOLVED'],
+  DEPENDENCY_ON_CLIENT: ['OPEN', 'DEPENDENCY_ON_VENDOR', 'RESOLVED'],
+  DEPENDENCY_ON_VENDOR: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'],
   RESOLVED: ['REOPENED'],
-  REOPENED: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'RESOLVED'],
+  REOPENED: ['OPEN', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'RESOLVED'],
 };
 
-const ACTIVE_STATUSES = ['OPEN', 'DEPENDENCY_ON_CLIENT', 'REOPENED'];
+const ACTIVE_STATUSES = ['OPEN', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'REOPENED'];
 
 function fullName(u?: { firstName?: string; lastName?: string } | null) {
   return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '';
@@ -79,6 +81,9 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
   const [cancelOpen, setCancelOpen] = useState(false);
   const [assigneeId, setAssigneeId] = useState('');
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [targetDeptId, setTargetDeptId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
 
   const { data: ticket, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['ticket', id],
@@ -110,6 +115,12 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
     enabled: !!ticket && isManager,
   });
   const assignable: any[] = (staffPool?.data || []).filter((u: any) => STAFF_ROLES.includes(u.role) && u.status === 'ACTIVE');
+
+  const { data: departments } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.getDepartments(),
+    enabled: !!ticket && isManager,
+  });
 
   const refreshAll = () => qc.invalidateQueries();
 
@@ -229,6 +240,13 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
     }
   };
 
+  const isOverdue =
+    ticket.slaStatus === 'BREACHED' ||
+    (ticket.resolutionDueAt &&
+      !ticket.resolvedAt &&
+      new Date(ticket.resolutionDueAt).getTime() < Date.now());
+  const isTicketClosedOrResolved = ['RESOLVED', 'CLOSED', 'CANCELLED'].includes(ticket.status);
+
   return (
     <div className="space-y-6">
       <div>
@@ -237,13 +255,30 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
           <span className="font-mono text-sm text-gray-500">{ticket.ticketNumber}</span>
           <StatusBadge status={ticket.status} />
           <PriorityBadge priority={ticket.priority} />
-          <SLABadge status={ticket.slaStatus} />
+          <SLABadge status={ticket.slaStatus} isOverdue={isOverdue} />
         </div>
         <h1 className="mt-1 text-2xl font-bold text-gray-900 break-words">{ticket.title}</h1>
         <p className="text-sm text-gray-500 mt-1">
           Raised by {fullName(ticket.raisedBy)} · {formatDate(ticket.createdAt, 'datetime')} · {ticket.department?.name}
         </p>
       </div>
+
+      {/* Overdue Warning Alert */}
+      {isOverdue && !isTicketClosedOrResolved && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 shrink-0">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-semibold text-red-900 dark:text-red-200">Ticket Resolution Overdue</h4>
+            <p className="text-xs sm:text-sm text-red-700 dark:text-red-300 mt-0.5">
+              This ticket has exceeded its resolution SLA target (due {ticket.resolutionDueAt ? formatDate(ticket.resolutionDueAt, 'datetime') : 'earlier'}). The assigned department has been alerted for priority resolution.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Top Tile: Assigned Support Agent Contact Details */}
       <AssignedAgentTopTile ticket={ticket} />
@@ -278,21 +313,26 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
             ) : (
               <ul className="divide-y divide-gray-100">
                 {attachments.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <button className="flex items-center gap-3 min-w-0 text-left hover:text-primary-700" onClick={() => onDownload(a)}>
-                      <span className="text-xl">{getFileIcon(a.mimeType)}</span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium truncate">{a.originalName}</span>
-                        <span className="block text-xs text-gray-500">{formatFileSize(a.size)} · {fullName(a.user)} · {formatRelativeTime(a.createdAt)}</span>
-                      </span>
-                    </button>
-                    {(a.userId === user?.id || isAdmin) && (
-                      <button
-                        className="text-xs text-danger-600 hover:underline shrink-0"
-                        onClick={() => run('att-' + a.id, () => api.deleteAttachment(ticket.id, a.id), 'Attachment removed')}
-                      >
-                        Remove
+                  <li key={a.id} className="flex flex-col gap-2 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <button className="flex items-center gap-3 min-w-0 text-left hover:text-primary-700" onClick={() => onDownload(a)}>
+                        <span className="text-xl">{getFileIcon(a.mimeType, a.originalName)}</span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium truncate">{a.originalName}</span>
+                          <span className="block text-xs text-gray-500">{formatFileSize(a.size)} · {fullName(a.user)} · {formatRelativeTime(a.createdAt)}</span>
+                        </span>
                       </button>
+                      {(a.userId === user?.id || isAdmin) && (
+                        <button
+                          className="text-xs text-danger-600 hover:underline shrink-0"
+                          onClick={() => run('att-' + a.id, () => api.deleteAttachment(ticket.id, a.id), 'Attachment removed')}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {isAudioFile(a.mimeType, a.originalName) && (
+                      <AudioAttachmentPlayer ticketId={ticket.id} attachment={a} />
                     )}
                   </li>
                 ))}
@@ -332,6 +372,11 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
 
             {canComment ? (
               <div className="p-4 border-t border-gray-200 space-y-3">
+                <VoiceTypingControl
+                  value={comment}
+                  onChange={(newVal) => setComment(newVal)}
+                  disabled={busy === 'comment'}
+                />
                 <textarea
                   className="input min-h-[100px]"
                   placeholder={internal ? 'Write an internal note (only staff can see this)...' : 'Write a reply...'}
@@ -419,6 +464,92 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
                     </button>
                   </div>
                   {assignable.length === 0 && <p className="text-xs text-gray-500">No active staff found in this department.</p>}
+                </div>
+              )}
+
+              {isManager && isActive && (
+                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">Reassign department</label>
+                    <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                      Wrong Dept?
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      className="input text-xs"
+                      value={targetDeptId}
+                      onChange={(e) => setTargetDeptId(e.target.value)}
+                    >
+                      <option value="">Select correct department...</option>
+                      {(departments || [])
+                        .filter((d: any) => d.id !== ticket.departmentId)
+                        .map((d: any) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs px-3 whitespace-nowrap"
+                      disabled={!targetDeptId || busy === 'transferDept'}
+                      onClick={() => setTransferModalOpen(true)}
+                    >
+                      Transfer
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    If raised in the wrong department, transfer to the right team. Current assignee will be unassigned and SLA updated.
+                  </p>
+                </div>
+              )}
+
+              {canWork && isActive && (
+                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-slate-800">
+                  <label className="label mb-1">Quick Status Actions</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ticket.status !== 'DEPENDENCY_ON_CLIENT' && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('DEPENDENCY_ON_CLIENT')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        ⏳ Dep. on User
+                      </button>
+                    )}
+                    {ticket.status !== 'DEPENDENCY_ON_VENDOR' && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('DEPENDENCY_ON_VENDOR')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        🏢 Dep. on Vendor
+                      </button>
+                    )}
+                    {ticket.status !== 'OPEN' && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('OPEN')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        🔄 Back to Open
+                      </button>
+                    )}
+                    {canClose && (
+                      <button
+                        type="button"
+                        disabled={busy === 'status'}
+                        onClick={() => changeStatus('RESOLVED')}
+                        className="btn-secondary text-xs py-1.5 px-2 bg-green-50 text-green-800 border-green-200 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 flex items-center justify-center gap-1 font-medium shadow-xs"
+                      >
+                        ✅ Resolve
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -558,6 +689,57 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
         <Field label={isStaff ? 'Reason (optional)' : 'Why are you reopening this ticket?'}>
           <textarea className="input min-h-[100px]" value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} />
         </Field>
+      </Modal>
+
+      <Modal
+        open={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        title="Transfer ticket to another department"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setTransferModalOpen(false)}>Cancel</button>
+            <button
+              className="btn-primary"
+              disabled={!targetDeptId || busy === 'transferDept'}
+              onClick={async () => {
+                const targetDept = (departments || []).find((d: any) => d.id === targetDeptId);
+                const ok = await run(
+                  'transferDept',
+                  () => api.updateTicket(ticket.id, { departmentId: targetDeptId, transferReason }),
+                  `Ticket transferred to ${targetDept?.name || 'new department'}`
+                );
+                if (ok) {
+                  setTransferModalOpen(false);
+                  setTargetDeptId('');
+                  setTransferReason('');
+                }
+              }}
+            >
+              {busy === 'transferDept' ? 'Transferring...' : 'Confirm Transfer'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            You are transferring ticket <strong className="text-gray-900 dark:text-white">#{ticket.ticketNumber}</strong> from{' '}
+            <strong className="text-gray-900 dark:text-white">{ticket.department?.name}</strong> to{' '}
+            <strong className="text-primary-600 dark:text-primary-400">
+              {(departments || []).find((d: any) => d.id === targetDeptId)?.name}
+            </strong>.
+          </p>
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-xs text-amber-800 dark:text-amber-300">
+            <strong>Note:</strong> The ticket will be unassigned from current staff, its SLA policy will recalculate for the new department, and an audit trail comment will be recorded.
+          </div>
+          <Field label="Transfer Reason (optional)" hint="e.g. Raised in IT instead of HR / Accounts">
+            <textarea
+              className="input min-h-[90px]"
+              placeholder="Why is this ticket being transferred?"
+              value={transferReason}
+              onChange={(e) => setTransferReason(e.target.value)}
+            />
+          </Field>
+        </div>
       </Modal>
 
     </div>

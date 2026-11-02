@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '@context/AuthContext';
 import { useEffect } from 'react';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import Layout from '@components/layout/Layout';
 import LoginPage from '@pages/auth/LoginPage';
 import RegisterPage from '@pages/auth/RegisterPage';
@@ -11,6 +12,7 @@ import VerifyEmailPage from '@pages/auth/VerifyEmailPage';
 
 // Admin pages
 import AdminDashboard from '@pages/admin/Dashboard';
+import ManagementDashboard from '@pages/admin/ManagementDashboard';
 import AdminAllTickets from '@pages/admin/AllTickets';
 import AdminTicketDetail from '@pages/admin/TicketDetail';
 import ApprovalsPage from '@pages/common/Approvals';
@@ -102,13 +104,38 @@ function TicketRedirect() {
   return <Navigate to={`/raiser/tickets/${id}`} replace />;
 }
 
+function UnauthorizedPage() {
+  const { logout, user } = useAuth();
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-4">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+          <ExclamationTriangleIcon className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Access Restricted</h2>
+        <p className="text-sm text-gray-600">
+          Your account ({user?.employeeId || user?.email || 'User'}) does not have permission to access this section.
+        </p>
+        <div className="pt-4 flex justify-center gap-3">
+          <Link to="/" className="btn-primary">Go to My Portal</Link>
+          <button onClick={() => logout(true)} className="btn-secondary">Sign Out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-  const isDepartmentHead = user?.role === 'DEPARTMENT_HEAD';
-  const isTeamLead = user?.role === 'TEAM_LEAD';
-  const isAgent = user?.role === 'AGENT';
-  const isRaiser = user?.role === 'RAISER' || user?.role === 'VIEWER';
+  const userRoles = Array.from(new Set([
+    ...(user?.role ? [user.role] : []),
+    ...(user?.roles || [])
+  ]));
+  const isAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r));
+  const isDepartmentHead = userRoles.includes('DEPARTMENT_HEAD');
+  const isTeamLead = userRoles.includes('TEAM_LEAD');
+  const isAgent = userRoles.includes('AGENT');
+  const isRaiser = userRoles.some(r => ['RAISER', 'VIEWER'].includes(r));
 
   return (
     <Routes>
@@ -122,6 +149,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
       <Route path="/verify-email" element={<PublicRoute><VerifyEmailPage /></PublicRoute>} />
       <Route path="/mfa-setup" element={<ProtectedRoute><MFASetupPage /></ProtectedRoute>} />
+      <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
       {/* Admin routes */}
       <Route path="/admin/*" element={
@@ -131,6 +159,7 @@ function AppRoutes() {
       }>
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="management-dashboard" element={<ManagementDashboard />} />
         <Route path="tickets" element={<AdminAllTickets />} />
         <Route path="tickets/:id" element={<AdminTicketDetail />} />
         <Route path="approvals" element={<ApprovalsPage ticketBase="/admin/tickets" />} />
@@ -199,13 +228,21 @@ function AppRoutes() {
 }
 
 import ErrorBoundary from '@components/common/ErrorBoundary';
+import { useTheme } from '@context/ThemeContext';
+import { initNativeApp, updateNativeStatusBar } from '@utils/nativeApp';
 
 export default function App() {
   const { initializeAuth } = useAuth();
+  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     initializeAuth();
+    initNativeApp(isDarkMode);
   }, [initializeAuth]);
+
+  useEffect(() => {
+    updateNativeStatusBar(isDarkMode);
+  }, [isDarkMode]);
 
   return (
     <ErrorBoundary>

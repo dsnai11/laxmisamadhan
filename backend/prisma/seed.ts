@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole, UserStatus, TicketCategory, TicketPriority, TicketStatus, AssetType } from '@prisma/client';
 import { hashPassword } from '../src/utils/encryption';
+import { seedHardwareAndSoftwareSLA } from '../src/scripts/seed_hardware_software_sla';
 
 const prisma = new PrismaClient();
 
@@ -793,6 +794,9 @@ async function main() {
   ]);
 
   console.log('✅ Teams created');
+
+  console.log('⚡ Applying IT Hardware & IT Software SLA Policies & Categories...');
+  await seedHardwareAndSoftwareSLA();
 
   console.log('');
   console.log('🎉 Seeding completed successfully!');

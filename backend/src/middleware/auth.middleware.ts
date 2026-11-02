@@ -62,6 +62,7 @@ export const authenticate = async (
         status: true,
         departmentId: true,
         mfaEnabled: true,
+        canViewTeamBucket: true,
       },
     });
 
@@ -92,6 +93,7 @@ export const authenticate = async (
       roles: userRoles,
       status: user.status,
       departmentId: user.departmentId || undefined,
+      canViewTeamBucket: user.canViewTeamBucket || false,
       permissions,
     };
     req.sessionId = session.id;
@@ -146,6 +148,7 @@ export const optionalAuth = async (
         roles: true,
         status: true,
         departmentId: true,
+        canViewTeamBucket: true,
       },
     });
 
@@ -159,6 +162,7 @@ export const optionalAuth = async (
         roles: userRoles,
         status: user.status,
         departmentId: user.departmentId || undefined,
+        canViewTeamBucket: user.canViewTeamBucket || false,
         permissions,
       };
       req.sessionId = session.id;

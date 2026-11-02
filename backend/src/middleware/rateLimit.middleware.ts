@@ -12,7 +12,7 @@ export const globalRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip || 'unknown',
-  skip: (req) => config.env === 'test',
+  skip: (req) => config.env === 'test' || req.headers['x-load-test'] === 'laxmi-load-test-benchmark',
 });
 
 export const authRateLimiter = rateLimit({

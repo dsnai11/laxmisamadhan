@@ -19,11 +19,11 @@ export const config = {
   },
 
   email: {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    host: (process.env.SMTP_HOST || 'smtp.gmail.com').replace(/^["']|["']$/g, '').trim(),
     port: parseInt(process.env.SMTP_PORT || '587', 10),
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    from: process.env.EMAIL_FROM || 'noreply@ticketportal.com',
+    user: (process.env.SMTP_USER || '').replace(/^["']|["']$/g, '').trim(),
+    pass: (process.env.SMTP_PASS || '').replace(/^["']|["']$/g, '').trim(),
+    from: (process.env.EMAIL_FROM || 'IT Service Desk <laxmisamadhan@lifc.in>').replace(/^["']|["']$/g, '').trim(),
   },
 
   mfa: {

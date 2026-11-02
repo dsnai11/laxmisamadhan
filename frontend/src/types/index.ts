@@ -8,13 +8,17 @@ export interface User {
   employeeId?: string;
   jobTitle?: string;
   site?: string;
+  branch?: string;
+  state?: string;
   reportingManagerName?: string;
+  departmentRaiserName?: string;
   avatar?: string;
   role: UserRole;
   roles?: UserRole[];
   status: UserStatus;
   departmentId?: string;
   department?: Department;
+  canViewTeamBucket?: boolean;
   managerId?: string;
   mfaEnabled: boolean;
   emailVerified: boolean;
@@ -122,6 +126,7 @@ export enum TicketStatus {
   RESOLVED = 'RESOLVED',
   REOPENED = 'REOPENED',
   DEPENDENCY_ON_CLIENT = 'DEPENDENCY_ON_CLIENT',
+  DEPENDENCY_ON_VENDOR = 'DEPENDENCY_ON_VENDOR',
 }
 
 export enum TicketPriority {
@@ -156,6 +161,7 @@ export interface Team {
   id: string;
   name: string;
   description?: string;
+  supportEmail?: string;
   departmentId: string;
   department?: Department;
   leadId?: string;
@@ -173,6 +179,7 @@ export interface SLAPolicy {
   description?: string;
   departmentId?: string;
   department?: Department;
+  canViewTeamBucket?: boolean;
   category?: TicketCategory;
   subCategory?: string;
   priority: TicketPriority;
@@ -379,7 +386,9 @@ export interface ApiResponse<T> {
 }
 
 export interface LoginCredentials {
-  email: string;
+  employeeId?: string;
+  email?: string;
+  identifier?: string;
   password: string;
   mfaCode?: string;
   rememberMe?: boolean;

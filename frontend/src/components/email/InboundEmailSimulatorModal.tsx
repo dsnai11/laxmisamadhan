@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { Modal, Field } from '@components/common/ui';
-import { EnvelopeIcon, SparklesIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { EnvelopeIcon, SparklesIcon, CheckCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface Props {
   open: boolean;
@@ -14,12 +14,25 @@ interface Props {
 export default function InboundEmailSimulatorModal({ open, onClose, departments = [] }: Props) {
   const navigate = useNavigate();
   const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<any | null>(null);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.syncInboundEmails();
+      toast.success(res?.processed > 0 ? `Synced! Found and processed ${res.processed} new email(s).` : 'Mailbox is up to date. No new unread emails.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to sync with mail server');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const [form, setForm] = useState({
     fromEmail: 'sourabh.sharma@lifc.in',
     fromName: 'Sourabh Sharma (Branch Head)',
-    toEmail: 'project.lifc.in',
+    toEmail: 'project@lifc.in',
     subject: 'Need system access for new branch project setup',
     body: 'Dear Team,\n\nPlease grant access for the new branch project setup under LIFC. Our team needs access to the support desk and project dashboards.\n\nThanks,\nSourabh Sharma',
   });
@@ -46,10 +59,30 @@ export default function InboundEmailSimulatorModal({ open, onClose, departments 
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="📧 Inbound Email-to-Ticket Gateway Simulator">
+    <Modal open={open} onClose={onClose} title="📧 Inbound Email Support & Gateway">
       <div className="space-y-4 text-xs">
-        <p className="text-gray-600">
-          Simulate an incoming email sent to <strong>project.lifc.in</strong>, <strong>it.support@lifc.in</strong>, <strong>hr.support@lifc.in</strong>, or any team support email. The system automatically creates a ticket routed to the correct department team!
+        {/* Live IMAP Server Status */}
+        <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white">Active Inbound Mail Listener</p>
+              <p className="text-[11px] text-gray-500 dark:text-slate-400">mail.lifc.in (Account: laxmisamadhan@lifc.in) • Auto-polling every 60s</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={handleSync}
+            className="btn-secondary text-xs py-1 px-3 self-start sm:self-auto flex items-center gap-1.5 bg-white dark:bg-slate-700 hover:bg-gray-50"
+          >
+            <ArrowPathIcon className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary-600' : 'text-emerald-600'}`} />
+            {syncing ? 'Checking...' : 'Sync Mailbox Now'}
+          </button>
+        </div>
+
+        <p className="text-gray-600 dark:text-slate-300">
+          Emails sent to <strong>project@lifc.in</strong> (IT Application), <strong>laxmisamadhan@lifc.in</strong>, or <strong>itauditor@lifc.in</strong> are automatically converted into tickets. You can also test with the simulator below:
         </p>
 
         {result ? (
@@ -108,18 +141,17 @@ export default function InboundEmailSimulatorModal({ open, onClose, departments 
                   className="input input-sm flex-1 font-semibold text-blue-700"
                   value={form.toEmail}
                   onChange={(e) => setForm({ ...form, toEmail: e.target.value })}
-                  placeholder="project.lifc.in or support@lifc.in"
+                  placeholder="project@lifc.in or laxmisamadhan@lifc.in"
                 />
                 <select
-                  className="input input-sm w-44 bg-gray-50"
+                  className="input input-sm w-52 bg-gray-50"
                   onChange={(e) => e.target.value && setForm({ ...form, toEmail: e.target.value })}
                 >
                   <option value="">Quick Presets ▾</option>
-                  <option value="project.lifc.in">project.lifc.in (Project Team)</option>
+                  <option value="project@lifc.in">project@lifc.in (IT Application)</option>
+                  <option value="laxmisamadhan@lifc.in">laxmisamadhan@lifc.in (IT Helpdesk)</option>
+                  <option value="itauditor@lifc.in">itauditor@lifc.in (Security / AI)</option>
                   <option value="it.support@lifc.in">it.support@lifc.in (IT Desk)</option>
-                  <option value="hr.support@lifc.in">hr.support@lifc.in (HR Desk)</option>
-                  <option value="credit.support@lifc.in">credit.support@lifc.in (Credit Desk)</option>
-                  <option value="admin.support@lifc.in">admin.support@lifc.in (Admin Desk)</option>
                 </select>
               </div>
             </Field>

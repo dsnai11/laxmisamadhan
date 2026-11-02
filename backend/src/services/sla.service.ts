@@ -4,6 +4,8 @@ import { logActivity } from '@middleware/audit.middleware';
 import { TicketPriority, TicketCategory, Prisma } from '@prisma/client';
 import { addMinutes, isBefore, isAfter } from 'date-fns';
 import { NotFoundError } from '@middleware/error.middleware';
+import emailService from './email.service';
+import config from '@config/index';
 
 const logger = createLogger('sla-service');
 
@@ -139,7 +141,7 @@ class SLAService {
           { responseDueAt: { lte: addMinutes(now, 30), gt: now } },
           { resolutionDueAt: { lte: addMinutes(now, 60), gt: now } },
         ],
-        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] },
+        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] },
       },
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
@@ -155,7 +157,7 @@ class SLAService {
           { responseDueAt: { lt: now } },
           { resolutionDueAt: { lt: now } },
         ],
-        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT'] },
+        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] },
       },
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
@@ -173,7 +175,7 @@ class SLAService {
 
     await prisma.sLAEvent.updateMany({
       where: { ticketId: ticket.id, eventType: { contains: 'WARNING' }, acknowledgedAt: null },
-      data: { acknowledgedAt: new Date(), acknowledgedById: 'system' },
+      data: { acknowledgedAt: new Date() },
     });
 
     const recipients = new Set<string>();
@@ -198,6 +200,21 @@ class SLAService {
           referenceType: 'TICKET',
           metadata: { ticketNumber: ticket.ticketNumber },
         },
+      });
+    }
+
+    if (ticket.assignedTo?.email) {
+      emailService.sendSLAWarningEmail(
+        ticket.assignedTo.email,
+        ticket.ticketNumber,
+        ticket.title,
+        'Approaching SLA deadline',
+        config.frontendUrl
+      ).catch((err) => {
+        logger.error('Failed to send SLA warning email', {
+          error: err instanceof Error ? err.message : String(err),
+          ticketNumber: ticket.ticketNumber,
+        });
       });
     }
   }
@@ -262,28 +279,57 @@ class SLAService {
 
   private async executeEscalationRules(ticket: any, rules: any[]): Promise<void> {
     for (const rule of rules) {
-      if (rule.action === 'notify' && rule.notifyUserIds) {
+      if (rule.action === 'notify' && Array.isArray(rule.notifyUserIds)) {
         for (const userId of rule.notifyUserIds) {
           await prisma.notification.create({
             data: {
               userId,
               type: 'SLA_BREACHED',
-              title: 'SLA Escalation',
-              message: `Ticket ${ticket.ticketNumber} has breached SLA and requires attention`,
+              title: 'SLA Escalation Alert',
+              message: `Ticket ${ticket.ticketNumber} (${ticket.title}) has breached SLA. Urgent intervention required.`,
               referenceId: ticket.id,
               referenceType: 'TICKET',
+              metadata: { ticketNumber: ticket.ticketNumber },
             },
           });
         }
-      } else if (rule.action === 'escalate' && rule.escalateToUserId) {
+      }
+
+      const targetUserId = rule.escalateToUserId || rule.reassignToUserId;
+      if ((rule.action === 'escalate' || rule.action === 'reassign') && targetUserId && targetUserId !== ticket.assignedToId) {
+        const previousAssigneeId = ticket.assignedToId;
         await prisma.ticket.update({
           where: { id: ticket.id },
-          data: { assignedToId: rule.escalateToUserId, assignedAt: new Date() },
+          data: {
+            assignedToId: targetUserId,
+            assignedAt: new Date(),
+            priority: 'CRITICAL',
+            tags: { set: Array.from(new Set([...(ticket.tags || []), 'SLA_ESCALATED', 'ESCALATED_L3'])) },
+          },
         });
-      } else if (rule.action === 'reassign' && rule.reassignToUserId) {
-        await prisma.ticket.update({
-          where: { id: ticket.id },
-          data: { assignedToId: rule.reassignToUserId, assignedAt: new Date() },
+
+        // Notify new senior engineer / lead
+        await prisma.notification.create({
+          data: {
+            userId: targetUserId,
+            type: 'TICKET_ESCALATED',
+            title: '🚨 SLA Escalation Reassignment',
+            message: `Ticket ${ticket.ticketNumber} (${ticket.title}) has breached SLA and has been escalated & reassigned to you for priority resolution.`,
+            referenceId: ticket.id,
+            referenceType: 'TICKET',
+            metadata: { ticketNumber: ticket.ticketNumber },
+          },
+        });
+
+        // Record in ticket update history
+        await prisma.ticketUpdate.create({
+          data: {
+            ticketId: ticket.id,
+            userId: targetUserId,
+            field: 'assignedToId',
+            oldValue: previousAssigneeId || 'Unassigned',
+            newValue: targetUserId,
+          },
         });
       }
     }

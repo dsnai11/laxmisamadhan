@@ -1,0 +1,14 @@
+# Environment variables and secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Node modules & build outputs
+node_modules/
+dist/
+logs/
+*.log

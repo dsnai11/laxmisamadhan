@@ -44,11 +44,15 @@ export default function AdminUserDetail() {
     employeeId: string;
     jobTitle: string;
     site: string;
+    branch: string;
+    state: string;
     reportingManagerName: string;
+    departmentRaiserName: string;
     departmentId: string;
     role: string;
     roles: string[];
     status: string;
+    canViewTeamBucket: boolean;
   }>({
     email: '',
     firstName: '',
@@ -58,11 +62,15 @@ export default function AdminUserDetail() {
     employeeId: '',
     jobTitle: '',
     site: '',
+    branch: '',
+    state: '',
     reportingManagerName: '',
+    departmentRaiserName: '',
     departmentId: '',
     role: '',
     roles: [],
     status: '',
+    canViewTeamBucket: false,
   });
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -81,12 +89,16 @@ export default function AdminUserDetail() {
         mobile: user.mobile || '',
         employeeId: user.employeeId || '',
         jobTitle: user.jobTitle || '',
-        site: user.site || '',
+        site: user.branch || user.site || '',
+        branch: user.branch || user.site || '',
+        state: user.state || '',
         reportingManagerName: user.reportingManagerName || '',
+        departmentRaiserName: user.departmentRaiserName || '',
         departmentId: user.departmentId || '',
         role: user.role,
         roles: currentRoles,
         status: user.status,
+        canViewTeamBucket: user.canViewTeamBucket || false,
       });
     }
   }, [user]);
@@ -123,10 +135,14 @@ export default function AdminUserDetail() {
         mobile: form.mobile.trim() || null,
         employeeId: form.employeeId.trim() || null,
         jobTitle: form.jobTitle.trim() || null,
-        site: form.site.trim() || null,
+        site: form.branch.trim() || form.site.trim() || null,
+        branch: form.branch.trim() || form.site.trim() || null,
+        state: form.state.trim() || null,
         reportingManagerName: form.reportingManagerName.trim() || null,
+        departmentRaiserName: form.departmentRaiserName.trim() || null,
+        canViewTeamBucket: form.canViewTeamBucket,
         ...(isOrgWide ? { departmentId: (form.departmentId || null) as any } : {}),
-      });
+      } as any);
       const oldRoles = ((user.roles && user.roles.length > 0 ? user.roles : [user.role]) as string[]).slice().sort();
       const newRoles = form.roles.slice().sort();
       if (JSON.stringify(oldRoles) !== JSON.stringify(newRoles)) {
@@ -221,8 +237,14 @@ export default function AdminUserDetail() {
         <Field label="Job Title / Designation">
           <input className="input" disabled={!editable} placeholder="e.g. Senior Manager" value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
         </Field>
-        <Field label="Site / Branch / Location">
-          <input className="input" disabled={!editable} placeholder="e.g. Mumbai Head Office" value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })} />
+        <Field label="Department Raiser Name">
+          <input className="input" disabled={!editable} placeholder="e.g. Priya Singh" value={form.departmentRaiserName} onChange={(e) => setForm({ ...form, departmentRaiserName: e.target.value })} />
+        </Field>
+        <Field label="Branch / Location">
+          <input className="input" disabled={!editable} placeholder="e.g. ROSHAN TOWER JAIPUR HO" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value, site: e.target.value })} />
+        </Field>
+        <Field label="State">
+          <input className="input" disabled={!editable} placeholder="e.g. RAJASTHAN" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
         </Field>
         <Field label="Reporting Manager Name">
           <input className="input" disabled={!editable} placeholder="e.g. Rajesh Kumar" value={form.reportingManagerName} onChange={(e) => setForm({ ...form, reportingManagerName: e.target.value })} />
@@ -277,6 +299,32 @@ export default function AdminUserDetail() {
                 );
               })}
             </div>
+          </Field>
+        </div>
+        <div className="md:col-span-2">
+          <Field label="Special Privileges / Permissions" hint={isSuperAdmin ? "Grant or revoke Team Bucket access for this user." : "Only a Super Admin can grant or revoke Team Bucket access."}>
+            <label className={`flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/40 transition-colors ${editable && isSuperAdmin ? 'hover:bg-gray-100/60 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
+              <input
+                type="checkbox"
+                disabled={!editable || !isSuperAdmin}
+                checked={form.canViewTeamBucket}
+                onChange={(e) => setForm({ ...form, canViewTeamBucket: e.target.checked })}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+              />
+              <div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  Team Bucket Access
+                  {form.canViewTeamBucket ? (
+                    <span className="badge badge-success text-[10px] py-0 px-1.5">Granted</span>
+                  ) : (
+                    <span className="badge badge-gray text-[10px] py-0 px-1.5">Restricted</span>
+                  )}
+                </span>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Allow this user to access the Team Bucket and view tickets assigned to their team queue.
+                </p>
+              </div>
+            </label>
           </Field>
         </div>
         <div className="md:col-span-2 flex justify-end">

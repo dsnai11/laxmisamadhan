@@ -538,30 +538,156 @@ class DepartmentService {
   }
 
   async getTeamBucket(
+    departmentId: string,
     teamId: string,
-    params: { page?: number; limit?: number; status?: string; assignedToId?: string; priority?: string },
+    params: { page?: number; limit?: number; status?: string; assignedToId?: string; priority?: string; search?: string },
     requestingUserId: string,
     requestingUserRole: string,
+    requestingUserRoles?: string[],
+    requestingUserCanViewBucket?: boolean,
+    requestingUserDepartmentId?: string,
   ): Promise<any> {
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      include: { members: { select: { id: true } } },
-    });
-    if (!team) throw new Error('Team not found');
+    const effectiveRoles: string[] = Array.from(new Set([
+      ...(requestingUserRole ? [requestingUserRole] : []),
+      ...(requestingUserRoles || [])
+    ]));
 
-    // TEAM_LEAD can only view their own team's bucket
-    if (requestingUserRole === 'TEAM_LEAD' && team.leadId !== requestingUserId) {
-      throw new Error('Access denied: you can only view your own team bucket');
-    }
+    const isLeadership = effectiveRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
+    const isTeamLead = effectiveRoles.includes('TEAM_LEAD');
 
-    const memberIds = team.members.map((m: any) => m.id);
     const page = params.page || 1;
     const limit = params.limit || 20;
 
-    const where: any = { assignedToId: { in: memberIds } };
+    // 1. Support "all" teams in department
+    if (teamId === 'all' || teamId === 'all-teams') {
+      const department = await prisma.department.findUnique({
+        where: { id: departmentId },
+        include: {
+          teams: {
+            include: {
+              members: {
+                select: { id: true, firstName: true, lastName: true, email: true, avatar: true }
+              }
+            }
+          }
+        }
+      });
+      if (!department) throw new Error('Department not found');
+
+      const isSuperAdmin = effectiveRoles.includes('SUPER_ADMIN');
+      const hasBucketPermission = isSuperAdmin || Boolean(requestingUserCanViewBucket);
+
+      if (!hasBucketPermission) {
+        throw new Error('Access denied: Team bucket access must be granted by a Super Admin');
+      }
+
+      const allMembersMap = new Map<string, any>();
+      department.teams.forEach(t => {
+        t.members.forEach(m => allMembersMap.set(m.id, m));
+      });
+      const allMembers = Array.from(allMembersMap.values());
+      const allMemberIds = allMembers.map(m => m.id);
+      const allTeamIds = department.teams.map(t => t.id);
+
+      const where: any = {
+        departmentId,
+        ...(allTeamIds.length > 0 ? { teamId: { in: allTeamIds } } : {})
+      };
+
+      if (params.status) where.status = params.status;
+      if (params.assignedToId) {
+        if (params.assignedToId === 'unassigned') {
+          where.assignedToId = null;
+        } else {
+          where.assignedToId = params.assignedToId;
+        }
+      }
+      if (params.priority) where.priority = params.priority;
+      if (params.search) {
+        where.AND = [
+          {
+            OR: [
+              { ticketNumber: { contains: params.search, mode: 'insensitive' } },
+              { title: { contains: params.search, mode: 'insensitive' } },
+            ]
+          }
+        ];
+      }
+
+      const [tickets, total] = await Promise.all([
+        prisma.ticket.findMany({
+          where,
+          skip: (page - 1) * limit,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            raisedBy: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+            assignedTo: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+            department: { select: { id: true, name: true, type: true, color: true } },
+            team: { select: { id: true, name: true } },
+            slaPolicy: { select: { id: true, name: true, responseTimeMins: true, resolutionTimeMins: true } },
+            _count: { select: { comments: true, attachments: true } },
+          },
+        }),
+        prisma.ticket.count({ where }),
+      ]);
+
+      return {
+        tickets,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+        team: {
+          id: 'all',
+          name: `All Teams (${department.name})`,
+          memberIds: allMemberIds,
+          members: allMembers,
+        },
+      };
+    }
+
+    // 2. Specific Team (e.g. CRM Support, Synoriq Application Support, etc.)
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        department: { select: { id: true, name: true } },
+        members: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } }
+      },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const isSuperAdmin = effectiveRoles.includes('SUPER_ADMIN');
+    const hasBucketPermission = isSuperAdmin || Boolean(requestingUserCanViewBucket);
+
+    if (!hasBucketPermission) {
+      throw new Error('Access denied: Team bucket access must be granted by a Super Admin');
+    }
+
+    const memberIds = team.members.map((m: any) => m.id);
+
+    const where: any = {
+      teamId: team.id,
+    };
+
     if (params.status) where.status = params.status;
-    if (params.assignedToId) where.assignedToId = params.assignedToId;
+    if (params.assignedToId) {
+      if (params.assignedToId === 'unassigned') {
+        where.assignedToId = null;
+      } else {
+        where.assignedToId = params.assignedToId;
+      }
+    }
     if (params.priority) where.priority = params.priority;
+    if (params.search) {
+      where.AND = [
+        {
+          OR: [
+            { ticketNumber: { contains: params.search, mode: 'insensitive' } },
+            { title: { contains: params.search, mode: 'insensitive' } },
+          ]
+        }
+      ];
+    }
 
     const [tickets, total] = await Promise.all([
       prisma.ticket.findMany({
@@ -573,6 +699,7 @@ class DepartmentService {
           raisedBy: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
           assignedTo: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
           department: { select: { id: true, name: true, type: true, color: true } },
+          team: { select: { id: true, name: true } },
           slaPolicy: { select: { id: true, name: true, responseTimeMins: true, resolutionTimeMins: true } },
           _count: { select: { comments: true, attachments: true } },
         },
@@ -589,6 +716,7 @@ class DepartmentService {
         id: team.id,
         name: (team as any).name,
         memberIds,
+        members: team.members,
       },
     };
   }

@@ -178,15 +178,26 @@ export function PriorityBadge({ priority }: { priority?: string }) {
   return <span className={cn('badge', getPriorityColor(priority))}>{humanize(priority)}</span>;
 }
 
-export function SLABadge({ status }: { status?: string }) {
-  if (!status) return null;
-  return <span className={cn('badge', getSLABadgeColor(status))}>{humanize(status)}</span>;
+export function SLABadge({ status, isOverdue }: { status?: string; isOverdue?: boolean }) {
+  if (!status && !isOverdue) return null;
+  const isBreachedOrOverdue = isOverdue || status === 'BREACHED';
+  const effectiveStatus = isBreachedOrOverdue ? 'BREACHED' : status || 'WITHIN_SLA';
+  const label = isBreachedOrOverdue ? 'Overdue' : humanize(effectiveStatus);
+  return (
+    <span className={cn('badge inline-flex items-center gap-1 font-semibold', getSLABadgeColor(effectiveStatus))}>
+      {isBreachedOrOverdue && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
+      {label}
+    </span>
+  );
 }
 
-export function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {
+export function Field({ label, error, hint, required, children }: { label: string; error?: string; hint?: string; required?: boolean; children: ReactNode }) {
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label flex items-center gap-1">
+        <span>{label}</span>
+        {required && <span className="text-danger-500 font-bold" title="Required">*</span>}
+      </label>
       {children}
       {hint && !error && <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{hint}</p>}
       {error && <p className="mt-1 text-sm text-danger-600 dark:text-danger-400">{error}</p>}
@@ -206,7 +217,7 @@ export function Avatar({ firstName, lastName, size = 8 }: { firstName?: string; 
   );
 }
 
-export const STATUS_OPTIONS = ['OPEN', 'RESOLVED', 'REOPENED', 'DEPENDENCY_ON_CLIENT'];
+export const STATUS_OPTIONS = ['OPEN', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR', 'RESOLVED', 'REOPENED'];
 export const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL', 'URGENT'];
 export const CATEGORY_OPTIONS = ['INCIDENT', 'SERVICE_REQUEST', 'CHANGE_REQUEST', 'PROBLEM', 'ACCESS_REQUEST', 'HARDWARE_REQUEST', 'SOFTWARE_REQUEST', 'SECURITY_INCIDENT', 'AI_MODEL_REQUEST', 'DATA_REQUEST'];
 export const ROLE_OPTIONS = ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT', 'RAISER', 'VIEWER'];

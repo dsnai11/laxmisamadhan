@@ -11,16 +11,98 @@ interface CategoryConfigManagerProps {
   canManage: boolean;
 }
 
-const DEFAULT_SUB_CATEGORIES: string[] = ['Desktop', 'Laptop', 'Peripheral', 'Printer', 'Software', 'Network'];
+export const HARDWARE_PRESET_SUB_CATEGORIES: string[] = [
+  'Desktop',
+  'Laptop',
+  'Peripheral',
+  'Printer',
+  'Network Hardware',
+  'Power / UPS',
+  'Hardware Procurement & Installation',
+  'Hardware Replacement',
+  'Warranty & OEM Support',
+  'Asset Management',
+];
 
-const DEFAULT_ITEM_PROBLEMS: Record<string, string[]> = {
-  Desktop: ['Mouse problem', 'TFT ISSUE', 'System not power on', 'HDD IS NOT DETECTED', 'Display damage', 'RAM Failure'],
-  Laptop: ['Battery Draining Fast', 'Keyboard Key Broken', 'Touchpad Unresponsive', 'Overheating', 'Screen Flicker'],
-  Peripheral: ['Bar Code Scanner Issue', 'Biometric Scanner Error', 'UPS Backup Low', 'Keyboard Not Responding'],
-  Printer: ['Paper Jam', 'Toner Empty / Low', 'Printer Offline', 'Print Quality Blurred'],
-  Software: ['LOS', 'LMS', 'CLU-collection'],
-  Network: ['LAN Port Not Working', 'WiFi Connection Dropping', 'VPN Access Denied'],
+export const HARDWARE_PRESET_ITEMS: Record<string, string[]> = {
+  Desktop: [
+    'Desktop / PC not working',
+    'Monitor / Display issue',
+    'Hardware overheating / Fan noise',
+    'RAM / HDD / SSD failure',
+    'Blue screen / Hardware crash',
+  ],
+  Laptop: [
+    'Laptop not starting',
+    'Laptop battery issue',
+    'Physical damage to device',
+  ],
+  Peripheral: [
+    'Keyboard / Mouse not working',
+    'Docking station / Adapter issue',
+    'Webcam / Microphone hardware issue',
+    'Peripheral / USB port issue',
+  ],
+  Printer: [
+    'Printer not working – critical department',
+    'Printer not working – normal user',
+  ],
+  'Network Hardware': [
+    'Network cable / LAN port hardware issue',
+  ],
+  'Power / UPS': [
+    'UPS / Power backup issue',
+  ],
+  'Hardware Procurement & Installation': [
+    'New hardware installation',
+  ],
+  'Hardware Replacement': [
+    'Hardware replacement request',
+  ],
+  'Warranty & OEM Support': [
+    'Warranty / OEM service coordination',
+  ],
+  'Asset Management': [
+    'Hardware inventory / Asset tagging',
+  ],
 };
+
+export const SOFTWARE_PRESET_SUB_CATEGORIES: string[] = [
+  'LOS (Loan Origination System)',
+  'LMS (Loan Management System)',
+  'CLU-collection',
+  'Core Applications',
+  'CRM',
+  'Operating System & Drivers',
+  'Productivity Software',
+  'Browser & Portals',
+  'Security Software',
+  'Software Licenses',
+  'User Permissions',
+  'Reports & MIS',
+  'Data Management',
+  'Software Installation',
+];
+
+export const SOFTWARE_PRESET_ITEMS: Record<string, string[]> = {
+  'LOS (Loan Origination System)': ['LOS Application Down / Critical Error'],
+  'LMS (Loan Management System)': ['LMS Repayment / Disbursal Posting Error'],
+  'CLU-collection': ['CLU Collection App / Receipt Sync Issue'],
+  'Core Applications': ['Core Banking / Payment Gateway Sync Failure'],
+  'CRM': ['CRM Customer Lead / KYC Processing Error'],
+  'Operating System & Drivers': ['Operating System / Blue Screen / Corrupted OS'],
+  'Productivity Software': ['Email / Outlook Access / Exchange Connection Issue'],
+  'Browser & Portals': ['Digital Signature (DSC) / Java / Browser Certificate Error'],
+  'Security Software': ['Antivirus / Security Patch Installation Failure'],
+  'Software Licenses': ['Software License Allocation (MS Office, Adobe, etc.)'],
+  'User Permissions': ['User Role / Permission Update Request'],
+  'Reports & MIS': ['Custom Report / MIS Export Issue'],
+  'Data Management': ['Data Correction / Rectification Request'],
+  'Software Installation': ['New Software Installation Request'],
+};
+
+const DEFAULT_SUB_CATEGORIES: string[] = HARDWARE_PRESET_SUB_CATEGORIES;
+const DEFAULT_ITEM_PROBLEMS: Record<string, string[]> = HARDWARE_PRESET_ITEMS;
 
 export default function CategoryConfigManager({ departmentId, canManage }: CategoryConfigManagerProps) {
   const qc = useQueryClient();
@@ -153,6 +235,22 @@ export default function CategoryConfigManager({ departmentId, canManage }: Categ
       ...prev,
       [subCat]: (prev[subCat] || []).filter((item) => item !== itemToRemove),
     }));
+  };
+
+  const loadHardwarePreset = () => {
+    setSubCategories(HARDWARE_PRESET_SUB_CATEGORIES);
+    setItemsMapping(HARDWARE_PRESET_ITEMS);
+    setSelectedSubCatForItems('Desktop');
+    setDefaultGroup('Vendor Support-FMS');
+    toast.success('Loaded IT Hardware 20-Issue Standard Matrix');
+  };
+
+  const loadSoftwarePreset = () => {
+    setSubCategories(SOFTWARE_PRESET_SUB_CATEGORIES);
+    setItemsMapping(SOFTWARE_PRESET_ITEMS);
+    setSelectedSubCatForItems('LOS (Loan Origination System)');
+    setDefaultGroup('Internal IT Support');
+    toast.success('Loaded IT Software Enterprise Matrix');
   };
 
   const save = async () => {
@@ -359,7 +457,34 @@ export default function CategoryConfigManager({ departmentId, canManage }: Categ
             </Field>
           </div>
 
-          {/* 1. GUI Sub-Categories Section */}
+          {/* Quick Preset Matrix Loaders */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-blue-50/70 dark:bg-slate-800/80 rounded-lg border border-blue-200 dark:border-slate-700">
+            <div>
+              <span className="text-xs font-semibold text-blue-900 dark:text-blue-300 block">
+                ⚡ Quick Presets
+              </span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Load predefined SLA categories and sub-issues directly
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                className="btn-secondary btn-sm text-xs border border-blue-300 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                onClick={loadHardwarePreset}
+              >
+                🖥️ Load IT Hardware (20 Issues)
+              </button>
+              <button
+                type="button"
+                className="btn-secondary btn-sm text-xs border border-purple-300 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                onClick={loadSoftwarePreset}
+              >
+                💻 Load IT Software (14 Systems)
+              </button>
+            </div>
+          </div>
+
           {/* 1. GUI Sub-Categories & Team Assignment Section */}
           <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">

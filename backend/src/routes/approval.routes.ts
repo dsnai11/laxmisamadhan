@@ -9,6 +9,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/pending', approvalController.getPendingApprovals);
+router.get('/eligible-approvers', approvalController.getEligibleApprovers);
 
 router.post('/', validateBody(validators.approvalSchema), approvalController.createApproval);
 

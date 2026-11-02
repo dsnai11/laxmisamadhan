@@ -13,11 +13,19 @@ const config: CapacitorConfig = {
       '65.2.215.48'
     ],
   },
+  ios: {
+    includePlugins: [
+      '@capacitor/haptics',
+      '@capacitor/keyboard',
+      '@capacitor/local-notifications',
+      '@capgo/capacitor-native-biometric',
+    ],
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
-      backgroundColor: '#1e293b',
+      backgroundColor: '#0f172a',
       androidSplashResourceName: 'splash',
       androidScaleType: 'CENTER_CROP',
       showSpinner: true,
@@ -26,6 +34,16 @@ const config: CapacitorConfig = {
       spinnerColor: '#3b82f6',
       splashFullScreen: true,
       splashImmersive: true,
+    },
+    StatusBar: {
+      overlaysWebView: false,
+      style: 'DARK',
+      backgroundColor: '#0f172a',
+    },
+    Keyboard: {
+      resize: 'body',
+      style: 'DARK',
+      resizeOnFullScreen: true,
     },
   },
 };

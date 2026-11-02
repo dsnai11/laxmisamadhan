@@ -21,10 +21,10 @@ router.post('/bulk-create', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD
 router.post('/bulk', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.bulkUserActionSchema), userController.bulkUserAction);
 
 router.get('/:id', userController.getUserById);
-router.patch('/:id', validateBody(validators.updateUserSchema), userController.updateUser);
-router.patch('/:id/role', validateBody(validators.updateUserRoleSchema), userController.updateUserRole);
-router.post('/:id/reset-password', validateBody(validators.adminResetPasswordSchema), userController.resetUserPassword);
-router.patch('/:id/status', validateBody(validators.updateUserStatusSchema), userController.updateUserStatus);
-router.delete('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), userController.deleteUser);
+router.patch('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.updateUserSchema), userController.updateUser);
+router.patch('/:id/role', requireRole('SUPER_ADMIN'), validateBody(validators.updateUserRoleSchema), userController.updateUserRole);
+router.post('/:id/reset-password', requireRole('SUPER_ADMIN', 'ADMIN'), validateBody(validators.adminResetPasswordSchema), userController.resetUserPassword);
+router.patch('/:id/status', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.updateUserStatusSchema), userController.updateUserStatus);
+router.delete('/:id', requireRole('SUPER_ADMIN', 'ADMIN'), userController.deleteUser);
 
 export default router;
