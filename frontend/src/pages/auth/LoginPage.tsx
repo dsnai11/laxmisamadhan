@@ -161,6 +161,13 @@ export default function LoginPage() {
       await login(data.employeeId, data.password, data.mfaCode, data.rememberMe);
       toast.success('Welcome back to Laxmi India Finance IT Portal');
 
+      // Check if user is required to reset their default/temporary password
+      const currentUser = (await api.getMe().catch(() => null)) as any;
+      if (currentUser?.mustResetPassword) {
+        navigate('/force-reset-password');
+        return;
+      }
+
       // Check if user has biometric or PIN configured already
       const profile = biometricService.getSavedProfile();
       if (!profile || (!profile.biometricEnabled && !profile.hasPin)) {
