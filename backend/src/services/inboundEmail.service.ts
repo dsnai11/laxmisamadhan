@@ -233,12 +233,11 @@ class InboundEmailService {
       logger.warn('Failed to send email confirmation to raiser', { error: err });
     }
 
-    // Real-time broadcast
+    // Real-time notification to department staff
     try {
       if (department?.id) {
         wsService.sendToDepartment(department.id, 'ticket:created', newTicket);
       }
-      wsService.broadcast('ticket:created', newTicket);
     } catch (_) {}
 
     return { action: 'TICKET_CREATED', ticket: newTicket };

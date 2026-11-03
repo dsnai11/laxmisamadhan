@@ -56,12 +56,11 @@ jobs:
       - name: Setup Release Keystore
         working-directory: frontend/android
         run: |
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > laxmisamadhan-release.jks
-          else
-            echo "Using standard release keystore..."
-            keytool -genkeypair -v -keystore laxmisamadhan-release.jks -alias laxmisamadhan -keyalg RSA -keysize 2048 -validity 10000 -storepass 'LaxmiSamadhan@2026' -keypass 'LaxmiSamadhan@2026' -dname 'CN=Laxmi India Finance, OU=IT Department, O=Laxmi India Finleasecorp Ltd, L=Jaipur, ST=Rajasthan, C=IN'
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "Error: ANDROID_KEYSTORE_BASE64 secret is not configured in GitHub Secrets."
+            exit 1
           fi
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > laxmisamadhan-release.jks
 
       - name: Grant Execute Permission for Gradlew
         working-directory: frontend/android
@@ -69,10 +68,18 @@ jobs:
 
       - name: Build Android App Bundle (Google Play Store AAB)
         working-directory: frontend/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'laxmisamadhan' }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew bundleRelease --stacktrace
 
       - name: Build Android Release APK (Direct Install)
         working-directory: frontend/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'laxmisamadhan' }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Build Android Debug APK

@@ -1,6 +1,22 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+const isProduction = (process.env.NODE_ENV || '').toLowerCase() === 'production';
+const jwtSecret = process.env.JWT_SECRET || (isProduction ? '' : 'default-secret-change-me');
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || (isProduction ? '' : 'default-refresh-secret-change-me');
+const encryptionKey = process.env.ENCRYPTION_KEY || (isProduction ? '' : 'default-32-char-encryption-key!!');
+
+if (isProduction) {
+  const missing: string[] = [];
+  if (!jwtSecret || jwtSecret.length < 32 || jwtSecret.includes('change-me')) missing.push('JWT_SECRET (must be >= 32 chars)');
+  if (!jwtRefreshSecret || jwtRefreshSecret.length < 32 || jwtRefreshSecret.includes('change-me')) missing.push('JWT_REFRESH_SECRET (must be >= 32 chars)');
+  if (!encryptionKey || encryptionKey.length < 32 || encryptionKey.includes('default-32-char')) missing.push('ENCRYPTION_KEY (must be >= 32 chars)');
+  if (missing.length > 0) {
+    console.error('CRITICAL SECURITY ERROR: Missing or weak production secrets in environment:\n - ' + missing.join('\n - '));
+    process.exit(1);
+  }
+}
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
@@ -8,14 +24,14 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 
   jwt: {
-    secret: process.env.JWT_SECRET || 'default-secret-change-me',
+    secret: jwtSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '15m',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'default-refresh-secret-change-me',
+    refreshSecret: jwtRefreshSecret,
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
 
   encryption: {
-    key: process.env.ENCRYPTION_KEY || 'default-32-char-encryption-key!!',
+    key: encryptionKey,
   },
 
   email: {

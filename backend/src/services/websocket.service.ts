@@ -82,9 +82,32 @@ class WebSocketService {
 
     logger.info('Client connected', { userId, socketId: socket.id, totalConnections: this.userSockets.size });
 
-    socket.on('join:ticket', (ticketId: string) => {
-      socket.join(`ticket:${ticketId}`);
-      logger.debug('Client joined ticket room', { userId, ticketId, socketId: socket.id });
+    socket.on('join:ticket', async (ticketId: string) => {
+      try {
+        const ticket = await prisma.ticket.findUnique({
+          where: { id: ticketId },
+          include: { department: true, watchers: true },
+        });
+
+        if (!ticket) return;
+
+        const uRole = socket.user?.role || 'RAISER';
+        const uDeptId = socket.user?.departmentId;
+        const isStaff = ['SUPER_ADMIN', 'ADMIN'].includes(uRole) ||
+          (['DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'].includes(uRole) && uDeptId && ticket.departmentId === uDeptId) ||
+          ticket.department?.headId === userId;
+        const isOwner = ticket.raisedById === userId || ticket.assignedToId === userId;
+        const isWatcher = (ticket.watchers || []).some((w: any) => w.userId === userId);
+
+        if (isStaff || isOwner || isWatcher) {
+          socket.join(`ticket:${ticketId}`);
+          logger.debug('Client joined ticket room', { userId, ticketId, socketId: socket.id });
+        } else {
+          logger.warn('Unauthorized attempt to join ticket room', { userId, ticketId, socketId: socket.id });
+        }
+      } catch (err: any) {
+        logger.error('Error validating ticket room join', { error: err.message, ticketId });
+      }
     });
 
     socket.on('leave:ticket', (ticketId: string) => {

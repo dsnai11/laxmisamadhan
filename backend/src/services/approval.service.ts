@@ -86,7 +86,24 @@ class ApprovalService {
     return approval;
   }
 
-  async getApprovals(ticketId: string): Promise<any[]> {
+  async getApprovals(ticketId: string, userId?: string, userRole?: string, departmentId?: string): Promise<any[]> {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { department: true, watchers: true },
+    });
+    if (!ticket) throw new Error('Ticket not found');
+
+    if (userId && userRole && !['SUPER_ADMIN', 'ADMIN'].includes(userRole)) {
+      const isRaiser = ticket.raisedById === userId;
+      const isAssignee = ticket.assignedToId === userId;
+      const isWatcher = (ticket.watchers || []).some((w: any) => w.userId === userId);
+      const isDeptStaff = departmentId && ticket.departmentId === departmentId && ['DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'].includes(userRole);
+      const isDeptHead = ticket.department?.headId === userId;
+      if (!isRaiser && !isAssignee && !isWatcher && !isDeptStaff && !isDeptHead) {
+        throw new Error('Access denied to ticket approvals');
+      }
+    }
+
     return prisma.approval.findMany({
       where: { ticketId },
       include: {
@@ -97,17 +114,48 @@ class ApprovalService {
     });
   }
 
-  async getApprovalById(id: string): Promise<any> {
+  async getApprovalById(id: string, userId?: string, userRole?: string, departmentId?: string): Promise<any> {
     const approval = await prisma.approval.findUnique({
       where: { id },
       include: {
         approver: { select: { id: true, firstName: true, lastName: true, email: true } },
         requester: { select: { id: true, firstName: true, lastName: true, email: true } },
-        ticket: { include: { department: true, raisedBy: true } },
+        ticket: {
+          include: {
+            department: true,
+            watchers: true,
+            raisedBy: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                departmentId: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (!approval) throw new Error('Approval not found');
+
+    if (userId && userRole && !['SUPER_ADMIN', 'ADMIN'].includes(userRole)) {
+      const isApprover = approval.approverId === userId;
+      const isRequester = approval.requesterId === userId;
+      const isRaiser = approval.ticket?.raisedById === userId;
+      const isAssignee = approval.ticket?.assignedToId === userId;
+      const isWatcher = (approval.ticket?.watchers || []).some((w: any) => w.userId === userId);
+      const isDeptStaff = departmentId && approval.ticket?.departmentId === departmentId && ['DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'].includes(userRole);
+      const isDeptHead = approval.ticket?.department?.headId === userId;
+
+      if (!isApprover && !isRequester && !isRaiser && !isAssignee && !isWatcher && !isDeptStaff && !isDeptHead) {
+        throw new Error('Access denied to approval');
+      }
+    }
+
     return approval;
   }
 

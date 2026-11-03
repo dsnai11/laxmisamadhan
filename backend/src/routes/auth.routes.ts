@@ -7,7 +7,13 @@ import * as validators from '@validators/auth.validator';
 
 const router = Router();
 
-router.post('/register', authRateLimiter, validateBody(validators.registerSchema), authController.register);
+router.post('/register', (_req, res) => {
+  res.status(403).json({
+    success: false,
+    error: 'Self-registration is disabled. Please contact your IT Administrator or HR Department for account provisioning.',
+    code: 'REGISTRATION_DISABLED',
+  });
+});
 router.post('/login', authRateLimiter, validateBody(validators.loginSchema), authController.login);
 router.post('/refresh', validateBody(validators.refreshTokenSchema), authController.refresh);
 router.post('/logout', authenticate, authController.logout);

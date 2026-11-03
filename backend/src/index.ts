@@ -94,8 +94,7 @@ app.get(apiPrefix, (req, res) => {
     status: 'online',
     name: 'Laxmi India Finance Ltd — Service Desk API',
     version: '1.0.0',
-    message: 'Backend API server is running smoothly. Open the web portal in your browser at http://10.10.1.117:8003/admin/tickets',
-    webPortalUrl: 'http://10.10.1.117:8003/admin/tickets',
+    message: 'Backend API service is operating normally.',
   });
 });
 

@@ -163,7 +163,14 @@ export const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res:
 export const addWatcher = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { userId } = req.body;
   
-  await ticketService.addWatcher(req.params.id, userId, req.user!.userId);
+  await ticketService.addWatcher(
+    req.params.id,
+    userId,
+    req.user!.userId,
+    req.user?.role as any,
+    req.user?.departmentId,
+    req.user?.roles as any
+  );
 
   res.json({
     success: true,
@@ -174,7 +181,14 @@ export const addWatcher = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const removeWatcher = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { userId } = req.body;
   
-  await ticketService.removeWatcher(req.params.id, userId, req.user!.userId);
+  await ticketService.removeWatcher(
+    req.params.id,
+    userId,
+    req.user!.userId,
+    req.user?.role as any,
+    req.user?.departmentId,
+    req.user?.roles as any
+  );
 
   res.json({
     success: true,

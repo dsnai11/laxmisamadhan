@@ -15,7 +15,12 @@ export const createApproval = asyncHandler(async (req: AuthenticatedRequest, res
 });
 
 export const getApprovals = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const approvals = await approvalService.getApprovals(req.params.ticketId);
+  const approvals = await approvalService.getApprovals(
+    req.params.ticketId,
+    req.user?.userId,
+    req.user?.role,
+    req.user?.departmentId
+  );
 
   res.json({
     success: true,
@@ -24,7 +29,12 @@ export const getApprovals = asyncHandler(async (req: AuthenticatedRequest, res: 
 });
 
 export const getApprovalById = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const approval = await approvalService.getApprovalById(req.params.id);
+  const approval = await approvalService.getApprovalById(
+    req.params.id,
+    req.user?.userId,
+    req.user?.role,
+    req.user?.departmentId
+  );
 
   res.json({
     success: true,

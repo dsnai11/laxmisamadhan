@@ -308,6 +308,11 @@ class TicketService {
       delete updates.priority;
       delete updates.assignedTo;
       delete updates.team;
+      delete (updates as any).assignedToId;
+      delete (updates as any).teamId;
+      delete (updates as any).status;
+      delete (updates as any).slaPolicyId;
+      delete (updates as any).customFields;
     }
 
     // If transferring to a new department (e.g. raised in wrong department):
@@ -700,7 +705,11 @@ class TicketService {
 
     const dir = path.resolve(config.upload.dir, 'tickets', ticket.id);
     await fs.promises.mkdir(dir, { recursive: true });
-    const ext = path.extname(file.originalname).slice(0, 12).replace(/[^.\w]/g, '');
+    const ext = path.extname(file.originalname).slice(0, 12).toLowerCase().replace(/[^.\w]/g, '');
+    const blockedExtensions = ['.exe', '.sh', '.bat', '.cmd', '.js', '.mjs', '.vbs', '.vbe', '.wsf', '.msi', '.com', '.scr', '.pif', '.hta', '.cpl', '.jar', '.php', '.asp', '.aspx', '.jsp'];
+    if (blockedExtensions.includes(ext)) {
+      throw new Error(`File extension ${ext} is blocked for security reasons`);
+    }
     const fileName = `${crypto.randomUUID()}${ext}`;
     const fullPath = path.join(dir, fileName);
     await fs.promises.writeFile(fullPath, file.buffer);
@@ -750,9 +759,24 @@ class TicketService {
     await logActivity(userId, 'ATTACHMENT_REMOVED', `Removed ${attachment.originalName}`, realTicketId, { attachmentId });
   }
 
-  async addWatcher(ticketId: string, userId: string, addedById: string): Promise<void> {
-    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
+  async addWatcher(ticketId: string, userId: string, addedById: string, userRole?: UserRole, userDeptId?: string, userRoles?: UserRole[]): Promise<void> {
+    const ticket = await prisma.ticket.findUnique({
+      where: this.resolveTicketWhere(ticketId) as any,
+      include: { department: true, watchers: true },
+    });
     if (!ticket) throw new Error('Ticket not found');
+
+    const effectiveRole = userRole || UserRole.RAISER;
+    if (!this.canAccessTicket(ticket, addedById, effectiveRole, userDeptId)) {
+      throw new Error('Access denied');
+    }
+
+    // Only ticket raiser, assignee, department staff/lead, or admins can manage watchers
+    const isStaff = (userRoles || [effectiveRole]).some(r => STAFF_ROLES.includes(r));
+    const isTicketOwner = ticket.raisedById === addedById || ticket.assignedToId === addedById;
+    if (!isStaff && !isTicketOwner) {
+      throw new Error('Permission denied to add watchers');
+    }
 
     await prisma.ticketWatcher.upsert({
       where: { ticketId_userId: { ticketId: ticket.id, userId } },
@@ -763,9 +787,25 @@ class TicketService {
     await logActivity(addedById, 'WATCHER_ADDED', `Added watcher`, ticket.id, { watcherId: userId });
   }
 
-  async removeWatcher(ticketId: string, userId: string, removedById: string): Promise<void> {
-    const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any });
+  async removeWatcher(ticketId: string, userId: string, removedById: string, userRole?: UserRole, userDeptId?: string, userRoles?: UserRole[]): Promise<void> {
+    const ticket = await prisma.ticket.findUnique({
+      where: this.resolveTicketWhere(ticketId) as any,
+      include: { department: true, watchers: true },
+    });
     if (!ticket) throw new Error('Ticket not found');
+
+    const effectiveRole = userRole || UserRole.RAISER;
+    if (!this.canAccessTicket(ticket, removedById, effectiveRole, userDeptId)) {
+      throw new Error('Access denied');
+    }
+
+    const isStaff = (userRoles || [effectiveRole]).some(r => STAFF_ROLES.includes(r));
+    const isSelfRemove = userId === removedById;
+    const isTicketOwner = ticket.raisedById === removedById || ticket.assignedToId === removedById;
+
+    if (!isStaff && !isTicketOwner && !isSelfRemove) {
+      throw new Error('Permission denied to remove watcher');
+    }
 
     await prisma.ticketWatcher.delete({
       where: { ticketId_userId: { ticketId: ticket.id, userId } },

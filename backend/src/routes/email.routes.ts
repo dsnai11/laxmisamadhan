@@ -1,13 +1,16 @@
 import { Router } from 'express';
+import { authenticate, requireRole } from '@middleware/auth.middleware';
 import { handleInboundEmail, syncInboundEmails, getEmailStatus } from '@controllers/email.controller';
 
 const router = Router();
 
-// Route for inbound email parsing (Webhook or Gateway Simulator)
+// Secure email routes: IMAP background poller handles automatic ingestion.
+// Manual endpoints require admin authentication.
+router.use(authenticate);
+router.use(requireRole('SUPER_ADMIN', 'ADMIN'));
+
 router.post('/inbound', handleInboundEmail);
 router.post('/simulate-inbound', handleInboundEmail);
-
-// On-demand sync & status check for IMAP mail poller
 router.post('/sync', syncInboundEmails);
 router.get('/status', getEmailStatus);
 

@@ -15,12 +15,12 @@ router.patch('/bases/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'
 router.delete('/bases/:id', requireRole('SUPER_ADMIN', 'ADMIN'), knowledgeController.deleteKnowledgeBase);
 
 router.get('/articles', validateQuery(validators.articleQuerySchema), knowledgeController.getArticles);
-router.post('/articles', validateBody(validators.articleSchema), knowledgeController.createArticle);
+router.post('/articles', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.articleSchema), knowledgeController.createArticle);
 router.get('/articles/categories', knowledgeController.getCategories);
 router.get('/articles/:id', knowledgeController.getArticleById);
-router.patch('/articles/:id', validateBody(validators.updateArticleSchema), knowledgeController.updateArticle);
-router.delete('/articles/:id', knowledgeController.deleteArticle);
-router.post('/articles/:id/review', validateBody(validators.articleReviewSchema), knowledgeController.reviewArticle);
+router.patch('/articles/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.updateArticleSchema), knowledgeController.updateArticle);
+router.delete('/articles/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), knowledgeController.deleteArticle);
+router.post('/articles/:id/review', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), validateBody(validators.articleReviewSchema), knowledgeController.reviewArticle);
 
 router.get('/bases/:knowledgeBaseId/articles/:slug', knowledgeController.getArticleBySlug);
 

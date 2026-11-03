@@ -23,7 +23,7 @@ class MailPollerService {
         pass: process.env.IMAP_PASS || config.email.pass || '',
       },
       tls: {
-        rejectUnauthorized: false,
+        rejectUnauthorized: process.env.IMAP_REJECT_UNAUTHORIZED !== 'false',
       },
       logger: false,
     };
@@ -160,10 +160,8 @@ class MailPollerService {
       isRunning: this.isRunning,
       isPolling: this.isPolling,
       lastPollAt: this.lastPollAt,
-      lastError: this.lastError,
+      lastError: this.lastError ? 'Error during last poll cycle' : null,
       totalProcessed: this.totalProcessed,
-      host: this.getImapConfig().host,
-      user: this.getImapConfig().auth.user,
     };
   }
 }

@@ -63,6 +63,7 @@ export const authenticate = async (
         departmentId: true,
         mfaEnabled: true,
         canViewTeamBucket: true,
+        mustResetPassword: true,
       },
     });
 
@@ -82,6 +83,22 @@ export const authenticate = async (
         code: 'ACCOUNT_INACTIVE',
       });
       return;
+    }
+
+    // Server-side enforcement of mandatory password reset:
+    // If the account is marked with mustResetPassword, restrict access to password reset and profile endpoints only.
+    if (user.mustResetPassword) {
+      const allowedPaths = ['/force-reset-password', '/change-password', '/logout', '/me'];
+      const requestPath = req.baseUrl ? `${req.baseUrl}${req.path}` : req.path;
+      const isAllowed = allowedPaths.some(p => requestPath.endsWith(p));
+      if (!isAllowed) {
+        res.status(403).json({
+          success: false,
+          error: 'Password reset is required before accessing portal features. Please reset your temporary password.',
+          code: 'PASSWORD_RESET_REQUIRED',
+        });
+        return;
+      }
     }
 
     const userRoles = Array.from(new Set([user.role, ...(user.roles || [])]));
