@@ -46,6 +46,8 @@ const API_URL = getApiBaseUrl();
 class ApiService {
   private client: AxiosInstance;
   private refreshPromise: Promise<TokenPair> | null = null;
+  private memoryAccessToken: string | null = null;
+  private readonly cookieAuth = !isNativeEnvironment();
 
   constructor() {
     this.client = axios.create({
@@ -58,7 +60,7 @@ class ApiService {
 
     this.client.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
-        const accessToken = localStorage.getItem('accessToken');
+        const accessToken = this.getAccessToken();
         if (accessToken && config.headers) {
           config.headers.Authorization = `Bearer ${accessToken}`;
         }
@@ -98,6 +100,7 @@ class ApiService {
   }
 
   clearAuth(): void {
+    this.memoryAccessToken = null;
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
@@ -105,6 +108,7 @@ class ApiService {
 
   private setAuth(tokens: TokenPair, user: User): void {
     if (tokens?.accessToken) {
+      this.memoryAccessToken = tokens.accessToken;
       localStorage.setItem('accessToken', tokens.accessToken);
     }
     if (tokens?.refreshToken) {
@@ -116,7 +120,13 @@ class ApiService {
   }
 
   getAccessToken(): string | null {
-    return localStorage.getItem('accessToken');
+    if (this.memoryAccessToken) return this.memoryAccessToken;
+    const stored = localStorage.getItem('accessToken');
+    if (stored) {
+      this.memoryAccessToken = stored;
+      return stored;
+    }
+    return null;
   }
 
   getUser(): User | null {
@@ -126,6 +136,22 @@ class ApiService {
 
   isAuthenticated(): boolean {
     return !!this.getAccessToken();
+  }
+
+  async restoreSession(): Promise<User | null> {
+    const token = this.getAccessToken();
+    if (!token && !this.cookieAuth) return null;
+    try {
+      return await this.getMe();
+    } catch {
+      try {
+        await this.refreshToken();
+        return await this.getMe();
+      } catch {
+        this.clearAuth();
+        return null;
+      }
+    }
   }
 
   async login(credentials: LoginCredentials): Promise<{ user: User; tokens: TokenPair }> {
@@ -199,6 +225,7 @@ class ApiService {
       if (!tokens?.accessToken) {
         throw new Error('Failed to refresh authentication session');
       }
+      this.memoryAccessToken = tokens.accessToken;
       localStorage.setItem('accessToken', tokens.accessToken);
       if (tokens.refreshToken) {
         localStorage.setItem('refreshToken', tokens.refreshToken);

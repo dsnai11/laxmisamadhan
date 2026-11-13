@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { Link } from 'react-router-dom';
 import { Menu, Transition } from '@headlessui/react';
 import { UserCircleIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, BellIcon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 import { User } from '@types';
@@ -15,9 +16,9 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
 
   if (!user) {
     return (
-      <a href="/login" className="btn-primary btn-xs">
+      <Link to="/login" className="btn-primary btn-xs">
         Sign In
-      </a>
+      </Link>
     );
   }
 
@@ -67,8 +68,8 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
           <div className="py-1">
             <Menu.Item>
               {({ active }) => (
-                <a
-                  href="/raiser/profile"
+                <Link
+                  to="/raiser/profile"
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-slate-300',
                     active && 'bg-gray-50 dark:bg-slate-800 dark:text-white'
@@ -76,14 +77,14 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
                 >
                   <UserCircleIcon className="h-5 w-5" />
                   Profile
-                </a>
+                </Link>
               )}
             </Menu.Item>
 
             <Menu.Item>
               {({ active }) => (
-                <a
-                  href="/raiser/profile?tab=notifications"
+                <Link
+                  to="/raiser/profile?tab=notifications"
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-slate-300',
                     active && 'bg-gray-50 dark:bg-slate-800 dark:text-white'
@@ -91,15 +92,15 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
                 >
                   <BellIcon className="h-5 w-5" />
                   Notifications
-                </a>
+                </Link>
               )}
             </Menu.Item>
 
             {hasRole(['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD']) && (
               <Menu.Item>
                 {({ active }) => (
-                  <a
-                    href="/admin/settings"
+                  <Link
+                    to="/admin/settings"
                     className={cn(
                       'flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-slate-300',
                       active && 'bg-gray-50 dark:bg-slate-800 dark:text-white'
@@ -107,7 +108,7 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
                   >
                     <Cog6ToothIcon className="h-5 w-5" />
                     Settings
-                  </a>
+                  </Link>
                 )}
               </Menu.Item>
             )}
