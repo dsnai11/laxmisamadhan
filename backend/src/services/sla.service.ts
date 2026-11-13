@@ -259,8 +259,146 @@ class SLAService {
       });
     }
 
-    if (ticket.slaPolicy?.escalationRules) {
+    if (ticket.slaPolicy?.escalationRules && Array.isArray(ticket.slaPolicy.escalationRules) && ticket.slaPolicy.escalationRules.length > 0) {
       await this.executeEscalationRules(ticket, ticket.slaPolicy.escalationRules);
+    } else {
+      await this.executeHierarchicalEscalation(ticket);
+    }
+  }
+
+  public async executeHierarchicalEscalation(ticket: any): Promise<void> {
+    const isEscalatedToLead = (ticket.tags || []).includes('ESCALATED_TEAM_LEAD');
+    const isEscalatedToDeptHead = (ticket.tags || []).includes('ESCALATED_DEPT_HEAD');
+
+    // Step 1: Escalate to Team Lead
+    if (!isEscalatedToLead) {
+      let teamLeadId: string | null = null;
+      let teamLeadUser: any = null;
+
+      if (ticket.assignedToId) {
+        const team = await prisma.team.findFirst({
+          where: {
+            departmentId: ticket.departmentId,
+            members: { some: { id: ticket.assignedToId } },
+            leadId: { not: null },
+          },
+          include: { lead: true },
+        });
+        if (team?.lead) {
+          teamLeadId = team.lead.id;
+          teamLeadUser = team.lead;
+        }
+      }
+
+      if (!teamLeadId && ticket.departmentId) {
+        const deptTeam = await prisma.team.findFirst({
+          where: {
+            departmentId: ticket.departmentId,
+            leadId: { not: null },
+          },
+          include: { lead: true },
+        });
+        if (deptTeam?.lead) {
+          teamLeadId = deptTeam.lead.id;
+          teamLeadUser = deptTeam.lead;
+        }
+      }
+
+      if (teamLeadId && teamLeadId !== ticket.assignedToId) {
+        const previousAssigneeName = ticket.assignedTo
+          ? `${ticket.assignedTo.firstName} ${ticket.assignedTo.lastName}`
+          : (ticket.assignedToId || 'Unassigned');
+
+        await prisma.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            assignedToId: teamLeadId,
+            assignedAt: new Date(),
+            priority: 'CRITICAL',
+            tags: { set: Array.from(new Set([...(ticket.tags || []), 'SLA_ESCALATED', 'ESCALATED_TEAM_LEAD', 'ESCALATED_L3'])) },
+          },
+        });
+
+        await prisma.ticketUpdate.create({
+          data: {
+            ticketId: ticket.id,
+            userId: teamLeadId,
+            field: 'assignedToId',
+            oldValue: previousAssigneeName,
+            newValue: `${teamLeadUser.firstName} ${teamLeadUser.lastName}`,
+            isSystem: true,
+          },
+        });
+
+        await prisma.notification.create({
+          data: {
+            userId: teamLeadId,
+            type: 'TICKET_ESCALATED',
+            title: '🚨 SLA Escalation Reassignment to Team Lead',
+            message: `Ticket ${ticket.ticketNumber} (${ticket.title}) assigned to ${previousAssigneeName} has breached SLA and has been escalated & reassigned to you as Team Lead.`,
+            referenceId: ticket.id,
+            referenceType: 'TICKET',
+            metadata: { ticketNumber: ticket.ticketNumber },
+          },
+        });
+        return;
+      }
+    }
+
+    // Step 2: Escalate to Department Head
+    if (!isEscalatedToDeptHead) {
+      let deptHeadId = ticket.department?.headId;
+      let deptHeadUser = ticket.department?.head;
+
+      if (!deptHeadId && ticket.departmentId) {
+        const foundHead = await prisma.user.findFirst({
+          where: { departmentId: ticket.departmentId, role: 'DEPARTMENT_HEAD', status: 'ACTIVE' },
+        });
+        if (foundHead) {
+          deptHeadId = foundHead.id;
+          deptHeadUser = foundHead;
+        }
+      }
+
+      if (deptHeadId && deptHeadId !== ticket.assignedToId) {
+        const previousAssigneeName = ticket.assignedTo
+          ? `${ticket.assignedTo.firstName} ${ticket.assignedTo.lastName}`
+          : (ticket.assignedToId || 'Team Lead');
+
+        await prisma.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            assignedToId: deptHeadId,
+            assignedAt: new Date(),
+            priority: 'CRITICAL',
+            tags: { set: Array.from(new Set([...(ticket.tags || []), 'SLA_ESCALATED', 'ESCALATED_DEPT_HEAD', 'ESCALATED_L4'])) },
+          },
+        });
+
+        await prisma.ticketUpdate.create({
+          data: {
+            ticketId: ticket.id,
+            userId: deptHeadId,
+            field: 'assignedToId',
+            oldValue: previousAssigneeName,
+            newValue: deptHeadUser ? `${deptHeadUser.firstName} ${deptHeadUser.lastName}` : 'Department Head',
+            isSystem: true,
+          },
+        });
+
+        await prisma.notification.create({
+          data: {
+            userId: deptHeadId,
+            type: 'TICKET_ESCALATED',
+            title: '🔴 Level 4 SLA Escalation: Reassigned to Department Head',
+            message: `CRITICAL: Ticket ${ticket.ticketNumber} (${ticket.title}) breached SLA under Team Lead resolution and has been escalated & reassigned to you as Department Head.`,
+            referenceId: ticket.id,
+            referenceType: 'TICKET',
+            metadata: { ticketNumber: ticket.ticketNumber },
+          },
+        });
+        return;
+      }
     }
   }
 
