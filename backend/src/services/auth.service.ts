@@ -10,6 +10,18 @@ import { AppError } from '@middleware/error.middleware';
 
 const logger = createLogger('auth-service');
 
+const DUMMY_PASSWORD_HASH = hashPassword('timing-equalization-placeholder');
+
+function maskIdentifier(identifier: string): string {
+  const value = (identifier || '').trim();
+  if (!value) return 'unknown';
+  if (value.includes('@')) {
+    const [local, domain] = value.split('@');
+    return `${local.slice(0, 2)}***@${domain}`;
+  }
+  return `${value.slice(0, 2)}***`;
+}
+
 export interface RegisterData {
   email: string;
   password: string;
@@ -99,25 +111,52 @@ class AuthService {
 
     emailService.sendWelcomeEmail(user.email, user.firstName, config.frontendUrl).catch(() => undefined);
 
-    logger.info('User registered', { userId: user.id, email: user.email });
+    logger.info('User registered', { userId: user.id, email: maskIdentifier(user.email) });
 
     return { user, tokens };
   }
 
   async login(identifier: string, password: string, mfaCode?: string, rememberMe = false): Promise<LoginResult> {
     const trimmed = (identifier || '').trim();
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    const withoutPrefix = trimmed.replace(/^(LIFC?|EMP)[-_]?/i, '');
+    const strippedZeros = digitsOnly.replace(/^0+/, '');
+
+    const candidates = Array.from(new Set([
+      trimmed,
+      trimmed.toLowerCase(),
+      trimmed.toUpperCase(),
+      digitsOnly,
+      withoutPrefix,
+      strippedZeros,
+      'LIF' + digitsOnly,
+      'LIF' + withoutPrefix,
+      'LIF-' + digitsOnly,
+      digitsOnly ? digitsOnly.padStart(4, '0') : '',
+      digitsOnly ? digitsOnly.padStart(5, '0') : '',
+    ])).filter(Boolean);
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { employeeId: { equals: trimmed, mode: 'insensitive' } },
+          { employeeId: { in: candidates, mode: 'insensitive' } },
           { email: { equals: trimmed.toLowerCase(), mode: 'insensitive' } },
+          ...(digitsOnly ? [{ employeeId: { endsWith: digitsOnly } }] : []),
         ],
       },
     });
 
     if (!user) {
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
       await this.handleFailedLogin(trimmed);
-      throw new AppError('Your Employee ID has not been created yet. Please contact your IT administrator or HR team to create your account.', 404, 'ACCOUNT_NOT_FOUND');
+      throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
+    }
+
+    const isValidPassword = await verifyPassword(password, user.passwordHash);
+
+    if (!isValidPassword) {
+      await this.handleFailedLogin(trimmed, user.id);
+      throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
 
     if (user.status !== UserStatus.ACTIVE) {
@@ -128,13 +167,6 @@ class AuthService {
       throw new AppError('Account temporarily locked due to failed attempts. Please try again later or contact your administrator.', 423, 'ACCOUNT_LOCKED');
     }
 
-    const isValidPassword = await verifyPassword(password, user.passwordHash);
-    
-    if (!isValidPassword) {
-      await this.handleFailedLogin(trimmed, user.id);
-      throw new AppError('Incorrect password. Please verify your password and try again.', 401, 'INVALID_PASSWORD');
-    }
-
     if (user.mfaEnabled) {
       if (!mfaCode) {
         throw new Error('MFA_REQUIRED');
@@ -143,7 +175,7 @@ class AuthService {
       const isValidMFA = authenticator.check(mfaCode, user.mfaSecret!);
       if (!isValidMFA) {
         await this.handleFailedLogin(trimmed, user.id);
-        throw new Error('Invalid MFA code');
+        throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
       }
     }
 
@@ -170,7 +202,7 @@ class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    logger.info('User logged in', { userId: user.id, email: user.email });
+    logger.info('User logged in', { userId: user.id, email: maskIdentifier(user.email) });
 
     return {
       user: {
@@ -343,7 +375,7 @@ class AuthService {
 
     if (user.email) {
       emailService.sendPasswordChangedEmail(user.email, user.firstName).catch((err) => {
-        logger.error('Failed to send password changed confirmation email', { error: err instanceof Error ? err.message : String(err), email: user.email });
+        logger.error('Failed to send password changed confirmation email', { error: err instanceof Error ? err.message : String(err), email: maskIdentifier(user.email) });
       });
     }
 
@@ -352,11 +384,30 @@ class AuthService {
 
   async forgotPassword(identifierOrEmail: string): Promise<void> {
     const normalized = (identifierOrEmail || '').trim();
+    const digitsOnly = normalized.replace(/\D/g, '');
+    const withoutPrefix = normalized.replace(/^(LIFC?|EMP)[-_]?/i, '');
+    const strippedZeros = digitsOnly.replace(/^0+/, '');
+
+    const candidates = Array.from(new Set([
+      normalized,
+      normalized.toLowerCase(),
+      normalized.toUpperCase(),
+      digitsOnly,
+      withoutPrefix,
+      strippedZeros,
+      'LIF' + digitsOnly,
+      'LIF' + withoutPrefix,
+      'LIF-' + digitsOnly,
+      digitsOnly ? digitsOnly.padStart(4, '0') : '',
+      digitsOnly ? digitsOnly.padStart(5, '0') : '',
+    ])).filter(Boolean);
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { employeeId: { equals: normalized, mode: 'insensitive' } },
+          { employeeId: { in: candidates, mode: 'insensitive' } },
           { email: { equals: normalized.toLowerCase(), mode: 'insensitive' } },
+          ...(digitsOnly ? [{ employeeId: { endsWith: digitsOnly } }] : []),
         ],
       },
     });
@@ -378,14 +429,14 @@ class AuthService {
       },
     });
 
-    const resetLink = `${config.frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
+    const resetLink = `${config.frontendUrl}/reset-password#token=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
     // Background the email sending so the user receives a prompt response and is not blocked by SMTP connection latency
     emailService.sendPasswordResetEmail(user.email, resetLink).catch((err) => {
-      logger.error('Failed to send password reset email', { error: err instanceof Error ? err.message : String(err), email: user.email });
+      logger.error('Failed to send password reset email', { error: err instanceof Error ? err.message : String(err), email: maskIdentifier(user.email) });
     });
 
-    logger.info('Password reset initiated and email dispatched', { userId: user.id, email: user.email });
+    logger.info('Password reset initiated and email dispatched', { userId: user.id, email: maskIdentifier(user.email) });
   }
 
   async resetPassword(token: string, email: string, newPassword: string): Promise<void> {
@@ -428,7 +479,7 @@ class AuthService {
 
     if (user.email) {
       emailService.sendPasswordChangedEmail(user.email, user.firstName).catch((err) => {
-        logger.error('Failed to send password changed confirmation email', { error: err instanceof Error ? err.message : String(err), email: user.email });
+        logger.error('Failed to send password changed confirmation email', { error: err instanceof Error ? err.message : String(err), email: maskIdentifier(user.email) });
       });
     }
 
@@ -589,17 +640,30 @@ class AuthService {
         const attempts = user.failedLoginAttempts + 1;
         const updateData: Prisma.UserUpdateInput = { failedLoginAttempts: attempts };
         
+        let lockedUntil: Date | undefined;
         if (attempts >= config.security.maxLoginAttempts) {
-          updateData.lockedUntil = new Date(Date.now() + config.security.lockoutDuration);
+          lockedUntil = new Date(Date.now() + config.security.lockoutDuration);
+          updateData.lockedUntil = lockedUntil;
         }
         
         await prisma.user.update({
           where: { id: userId },
           data: updateData,
         });
+
+        if (lockedUntil) {
+          emailService
+            .sendAccountLockedEmail(user.email, user.firstName, lockedUntil)
+            .catch(() => undefined);
+          logger.warn('Account locked after repeated failed logins', {
+            userId: user.id,
+            attempts,
+            lockedUntil: lockedUntil.toISOString(),
+          });
+        }
       }
     }
-    logger.warn('Failed login attempt', { identifier, userId });
+    logger.warn('Failed login attempt', { identifier: maskIdentifier(identifier), userId });
   }
 
   private async resetFailedAttempts(userId: string): Promise<void> {

@@ -9,6 +9,7 @@ import { subMinutes, addMinutes, isBefore, isAfter } from 'date-fns';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { detectFileType, DetectedFileType } from '@utils/fileSignature';
 
 const logger = createLogger('ticket-service');
 
@@ -477,11 +478,14 @@ class TicketService {
       throw new Error('Tickets can only be assigned to active staff members');
     }
 
+    const isSystemAutoAssign = note === 'Auto-assigned by system' || !assignedById || assignedById === ticket.raisedById;
+    const actualAssignedById = isSystemAutoAssign ? null : assignedById;
+
     const updatedTicket = await prisma.ticket.update({
       where: { id: ticket.id },
       data: {
         assignedToId,
-        assignedById,
+        assignedById: actualAssignedById,
         teamId,
         assignedAt: new Date(),
         respondedAt: ticket.respondedAt ?? new Date(),
@@ -490,7 +494,8 @@ class TicketService {
             field: 'assignedTo',
             oldValue: ticket.assignedTo ? `${ticket.assignedTo.firstName} ${ticket.assignedTo.lastName}` : (ticket.assignedToId || 'Unassigned'),
             newValue: `${assignee.firstName} ${assignee.lastName}`,
-            userId: assignedById,
+            userId: actualAssignedById || assignee.id,
+            isSystem: isSystemAutoAssign,
           },
         },
       },
@@ -502,12 +507,11 @@ class TicketService {
       },
     });
 
-    const isSystemAutoAssign = note === 'Auto-assigned by system';
     const assignerLabel = isSystemAutoAssign
       ? 'System (Auto-assignment)'
       : `${updatedTicket.assignedBy?.firstName ?? 'System'} ${updatedTicket.assignedBy?.lastName ?? ''}`.trim();
 
-    await logActivity(assignedById, 'TICKET_ASSIGNED', isSystemAutoAssign ? `Auto-assigned to ${assignee.firstName} ${assignee.lastName}` : `Assigned to ${assignee.firstName} ${assignee.lastName}`, id, {
+    await logActivity(actualAssignedById || assignee.id, 'TICKET_ASSIGNED', isSystemAutoAssign ? `Auto-assigned to ${assignee.firstName} ${assignee.lastName}` : `Assigned to ${assignee.firstName} ${assignee.lastName}`, id, {
       assigneeId: assignedToId,
       note,
       autoAssigned: isSystemAutoAssign,
@@ -696,6 +700,33 @@ class TicketService {
     await logActivity(userId, 'COMMENT_DELETED', 'Deleted a comment', ticketId, { commentId });
   }
 
+  private async inspectUploadedFile(filePath: string, size: number, originalName: string): Promise<DetectedFileType> {
+    const handle = await fs.promises.open(filePath, 'r');
+    try {
+      const length = Math.min(Math.max(size, 0), 8192);
+      const head = Buffer.alloc(length);
+      const { bytesRead } = await handle.read(head, 0, length, 0);
+      const detected = detectFileType(head.subarray(0, bytesRead), originalName);
+      if (!detected) {
+        await fs.promises.unlink(filePath).catch(() => undefined);
+        throw new Error('File content does not match a supported, safe file type');
+      }
+      return detected;
+    } finally {
+      await handle.close();
+    }
+  }
+
+  private async hashFile(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const hash = crypto.createHash('sha256');
+      const stream = fs.createReadStream(filePath);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('error', reject);
+      stream.on('end', () => resolve(hash.digest('hex')));
+    });
+  }
+
   async addAttachment(ticketId: string, userId: string, userRole: UserRole, file: Express.Multer.File): Promise<any> {
     const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, include: { department: true, watchers: true } });
     if (!ticket) throw new Error('Ticket not found');
@@ -703,16 +734,25 @@ class TicketService {
       throw new Error('Access denied');
     }
 
+    const tempPath = file.path;
+    if (!tempPath) {
+      throw new Error('Uploaded file could not be processed');
+    }
+
+    const detected = await this.inspectUploadedFile(tempPath, file.size, file.originalname);
+
     const dir = path.resolve(config.upload.dir, 'tickets', ticket.id);
     await fs.promises.mkdir(dir, { recursive: true });
-    const ext = path.extname(file.originalname).slice(0, 12).toLowerCase().replace(/[^.\w]/g, '');
-    const blockedExtensions = ['.exe', '.sh', '.bat', '.cmd', '.js', '.mjs', '.vbs', '.vbe', '.wsf', '.msi', '.com', '.scr', '.pif', '.hta', '.cpl', '.jar', '.php', '.asp', '.aspx', '.jsp'];
-    if (blockedExtensions.includes(ext)) {
-      throw new Error(`File extension ${ext} is blocked for security reasons`);
+    const ext = detected.extension.slice(0, 12).toLowerCase().replace(/[^.\w]/g, '');
+    const blockedExtensions = ['.exe', '.sh', '.bat', '.cmd', '.js', '.mjs', '.vbs', '.vbe', '.wsf', '.msi', '.com', '.scr', '.pif', '.hta', '.cpl', '.jar', '.php', '.asp', '.aspx', '.jsp', '.html', '.htm', '.svg'];
+    if (!ext || blockedExtensions.includes(ext)) {
+      await fs.promises.unlink(tempPath).catch(() => undefined);
+      throw new Error(`File extension ${ext || '(none)'} is blocked for security reasons`);
     }
     const fileName = `${crypto.randomUUID()}${ext}`;
     const fullPath = path.join(dir, fileName);
-    await fs.promises.writeFile(fullPath, file.buffer);
+    const checksum = await this.hashFile(tempPath);
+    await fs.promises.rename(tempPath, fullPath);
 
     const attachment = await prisma.attachment.create({
       data: {
@@ -720,10 +760,10 @@ class TicketService {
         userId,
         fileName,
         originalName: file.originalname,
-        mimeType: file.mimetype,
+        mimeType: detected.mime,
         size: file.size,
         path: fullPath,
-        checksum: crypto.createHash('sha256').update(file.buffer).digest('hex'),
+        checksum,
       },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
@@ -1463,7 +1503,7 @@ class TicketService {
 
         if (assignee) {
           logger.info(`Auto-assigning sub-category ticket ${ticket.ticketNumber} to respective team (${targetTeam.name}) member ${assignee.email}`);
-          return await this.assignTicket(ticketId, assignee.id, ticket.raisedById, teamId, 'Auto-assigned by system');
+          return await this.assignTicket(ticketId, assignee.id, undefined as any, teamId, 'Auto-assigned by system');
         } else {
           logger.warn(`Ticket ${ticket.ticketNumber} is assigned to team ${targetTeam.name} for sub-category ${ticket.subCategory || '-'}, but team has no active agents or lead. Keeping ticket queued in respective team.`);
           return null;
@@ -1588,7 +1628,7 @@ class TicketService {
       if (teamId) {
         await prisma.ticket.update({ where: { id: ticketId }, data: { teamId } });
       }
-      return await this.assignTicket(ticketId, assignee.id, ticket.raisedById, teamId, 'Auto-assigned by system');
+      return await this.assignTicket(ticketId, assignee.id, undefined as any, teamId, 'Auto-assigned by system');
     } else {
       logger.warn(`Auto-assign enabled for department ${ticket.department.name} but no active eligible agent/staff member was found`);
       return null;

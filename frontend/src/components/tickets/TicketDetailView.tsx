@@ -41,10 +41,16 @@ function fullName(u?: { firstName?: string; lastName?: string } | null) {
   return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '';
 }
 
-function describeUpdate(u: any): string {
+function describeUpdate(u: any, ticket?: any): string {
   const who = fullName(u.user) || 'Someone';
+  const isRaiser = u.user?.id === ticket?.raisedById || u.user?.role === 'RAISER';
   if (u.field === 'status') return `${who} changed status from ${humanize(u.oldValue)} to ${humanize(u.newValue)}`;
-  if (u.field === 'assignedTo') return `${who} assigned the ticket`;
+  if (u.field === 'assignedTo') {
+    if (u.isSystem || isRaiser || u.oldValue === 'Unassigned') {
+      return `Ticket assigned to ${humanize(u.newValue) || 'support agent'}`;
+    }
+    return `${who} assigned the ticket to ${humanize(u.newValue) || 'support agent'}`;
+  }
   if (u.newValue !== null && u.newValue !== undefined) return `${who} changed ${humanize(u.field)} from ${humanize(u.oldValue) || 'none'} to ${humanize(u.newValue)}`;
   return `${who} updated ${humanize(u.field)}`;
 }
@@ -411,7 +417,7 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
               <ul className="divide-y divide-gray-100">
                 {visibleUpdates.map((u) => (
                   <li key={u.id} className="px-4 py-3 text-sm flex justify-between gap-3">
-                    <span className="text-gray-700">{describeUpdate(u)}</span>
+                    <span className="text-gray-700">{describeUpdate(u, ticket)}</span>
                     <span className="text-gray-400 whitespace-nowrap">{formatRelativeTime(u.createdAt)}</span>
                   </li>
                 ))}

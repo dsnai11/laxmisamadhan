@@ -19,25 +19,30 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
   const raiserPhone = raiser?.phone || raiser?.mobile || '+91-9829012345';
   const assigneePhone = assignee?.phone || assignee?.mobile || '+91-9829098765';
 
-  const assignUpdate = (ticket?.updates || []).find((u: any) => u.field === 'assignedTo' && u.user);
-  const assigner = ticket.assignedBy || assignUpdate?.user;
+  const isRaiser = (u: any) => !u || u.id === raiser?.id || u.role === 'RAISER';
+  const assignUpdate = (ticket?.updates || []).find((u: any) => u.field === 'assignedTo' && u.user && !isRaiser(u.user) && !u.isSystem);
+  const rawAssigner = ticket.assignedBy && !isRaiser(ticket.assignedBy) ? ticket.assignedBy : assignUpdate?.user;
+  const assigner = !isRaiser(rawAssigner) ? rawAssigner : null;
   const isViewerTheAssignee = !!currentUserId && currentUserId === assignee?.id;
-  const assignerPhone = assigner?.phone || assigner?.mobile;
+  const teamLead = ticket.team?.lead && ticket.team.lead.id !== assignee?.id ? ticket.team.lead : null;
+  const displayAssigner = assigner || teamLead;
+  const isTeamLeadDisplay = !assigner && !!teamLead;
+  const assignerPhone = displayAssigner?.phone || displayAssigner?.mobile;
 
   return (
     <div className="space-y-4">
-      {/* 1. Contact Card: If viewer is the assigned agent, show Ticket Assigner; otherwise show Assigned Agent */}
-      {isViewerTheAssignee && assigner ? (
+      {/* 1. Contact Card: If viewer is the assigned agent, show Ticket Assigner or Team Lead; otherwise show Assigned Agent */}
+      {isViewerTheAssignee && displayAssigner ? (
         <div className="bg-gradient-to-r from-indigo-50 to-purple-50/50 dark:from-slate-900 dark:to-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 rounded-xl p-4 shadow-2xs space-y-3">
           <div className="flex items-center justify-between border-b border-indigo-100 dark:border-indigo-900/40 pb-2">
             <div className="flex items-center gap-2">
               <UserCircleIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               <h3 className="font-bold text-gray-900 dark:text-white text-xs tracking-wide">
-                Ticket Assigner Contact Details
+                {isTeamLeadDisplay ? 'Team Lead Contact Details' : 'Ticket Assigner Contact Details'}
               </h3>
             </div>
             <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded font-semibold">
-              Assigner ({humanize(assigner.role || 'LEAD')})
+              {isTeamLeadDisplay ? 'Team Lead' : `Assigner (${humanize(displayAssigner.role || 'LEAD')})`}
             </span>
           </div>
 
@@ -45,27 +50,27 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
             <div className="flex justify-between items-start">
               <div>
                 <p className="font-bold text-gray-900 dark:text-white text-sm">
-                  {assigner.firstName} {assigner.lastName}
+                  {displayAssigner.firstName} {displayAssigner.lastName}
                 </p>
                 <p className="text-gray-600 dark:text-slate-400 text-[11px]">
-                  {humanize(assigner.role)} · {assigner.department?.name || ticket.department?.name}
+                  {humanize(displayAssigner.role)} · {displayAssigner.department?.name || ticket.department?.name}
                 </p>
               </div>
             </div>
 
             <div className="space-y-1.5 pt-1">
-              {assigner.email && (
+              {displayAssigner.email && (
                 <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-indigo-100 dark:border-indigo-900/40">
                   <a
-                    href={`mailto:${assigner.email}`}
+                    href={`mailto:${displayAssigner.email}`}
                     className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-medium hover:underline truncate"
                   >
                     <EnvelopeIcon className="h-4 w-4 text-indigo-500 shrink-0" />
-                    <span className="truncate">{assigner.email}</span>
+                    <span className="truncate">{displayAssigner.email}</span>
                   </a>
                   <button
                     type="button"
-                    onClick={() => copyToClipboard(assigner.email, 'email')}
+                    onClick={() => copyToClipboard(displayAssigner.email, 'email')}
                     className="text-[10px] text-gray-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shrink-0 ml-1"
                   >
                     Copy
@@ -91,7 +96,7 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
             </div>
           </div>
         </div>
-      ) : (
+      ) : !isViewerTheAssignee ? (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:from-slate-900 dark:to-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-xl p-4 shadow-2xs space-y-3">
           <div className="flex items-center justify-between border-b border-blue-100 dark:border-blue-900/40 pb-2">
             <div className="flex items-center gap-2">
@@ -159,7 +164,7 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* 2. Raiser Contact Card (For Agent & Staff) */}
       <div className="bg-gradient-to-r from-emerald-50 to-teal-50/50 dark:from-slate-900 dark:to-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-4 shadow-2xs space-y-3">
