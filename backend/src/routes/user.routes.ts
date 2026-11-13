@@ -14,7 +14,7 @@ router.get('/stats', userController.getUserStats);
 router.get('/search', userController.searchUsers);
 router.get('/subordinates', userController.getSubordinates);
 router.get('/profile', userController.getProfile);
-router.patch('/profile', validateBody(validators.updateUserSchema), userController.updateProfile);
+router.patch('/profile', validateBody(validators.updateProfileSchema), userController.updateProfile);
 
 router.post('/', validateBody(validators.createUserSchema), userController.createUser);
 router.post('/bulk-create', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.bulkCreateUserSchema), userController.bulkCreateUsers);

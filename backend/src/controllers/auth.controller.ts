@@ -6,9 +6,37 @@ import emailService from '@services/email.service';
 import config from '@config/index';
 import logger from '@utils/logger';
 
+const ACCESS_TOKEN_COOKIE = 'accessToken';
+const REFRESH_TOKEN_COOKIE = 'refreshToken';
+
+const baseCookieOptions = () => ({
+  httpOnly: true,
+  secure: config.env === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+});
+
+const setAuthCookies = (res: Response, tokens: { accessToken: string; refreshToken: string; expiresIn: number }) => {
+  res.cookie(ACCESS_TOKEN_COOKIE, tokens.accessToken, {
+    ...baseCookieOptions(),
+    maxAge: tokens.expiresIn,
+  });
+  res.cookie(REFRESH_TOKEN_COOKIE, tokens.refreshToken, {
+    ...baseCookieOptions(),
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+};
+
+const clearAuthCookies = (res: Response) => {
+  res.clearCookie(ACCESS_TOKEN_COOKIE, baseCookieOptions());
+  res.clearCookie(REFRESH_TOKEN_COOKIE, baseCookieOptions());
+};
+
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.register(req.body, req.user?.userId);
-  
+
+  setAuthCookies(res, result.tokens);
+
   res.status(201).json({
     success: true,
     message: 'Registration successful',
@@ -25,13 +53,8 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
   
   const result = await authService.login(loginIdentifier, password, mfaCode, rememberMe);
-  
-  res.cookie('refreshToken', result.tokens.refreshToken, {
-    httpOnly: true,
-    secure: config.env === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+
+  setAuthCookies(res, result.tokens);
 
   res.json({
     success: true,
@@ -48,13 +71,8 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const tokens = await authService.refreshTokens(refreshToken);
-  
-  res.cookie('refreshToken', tokens.refreshToken, {
-    httpOnly: true,
-    secure: config.env === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+
+  setAuthCookies(res, tokens);
 
   res.json({
     success: true,
@@ -69,11 +87,7 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
 
   await authService.logout(sessionId!, revokeAll, userId);
 
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: config.env === 'production',
-    sameSite: 'lax',
-  });
+  clearAuthCookies(res);
 
   res.json({
     success: true,
@@ -213,9 +227,9 @@ export const getMe = asyncHandler(async (req: Request, res: Response) => {
 
 export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const { firstName, lastName, phone, avatar } = req.body;
+  const { avatar } = req.body;
 
-  const user = await authService.updateUser(userId, { firstName, lastName, phone, avatar }, userId);
+  const user = await authService.updateUser(userId, { avatar }, userId);
 
   res.json({
     success: true,

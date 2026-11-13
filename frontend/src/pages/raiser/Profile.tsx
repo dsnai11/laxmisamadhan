@@ -11,9 +11,7 @@ import { BiometricSetupModal } from '@components/auth/BiometricQuickAuth';
 import { FingerPrintIcon } from '@heroicons/react/24/outline';
 
 export default function Profile() {
-  const { user, updateProfile } = useAuth();
-  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '' });
-  const [saving, setSaving] = useState(false);
+  const { user } = useAuth();
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [changing, setChanging] = useState(false);
 
@@ -23,27 +21,11 @@ export default function Profile() {
   const [setupModalOpen, setSetupModalOpen] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      setForm({ firstName: user.firstName || '', lastName: user.lastName || '', phone: user.phone || '' });
-    }
     setBioProfile(biometricService.getSavedProfile());
     biometricService.getBiometricInfo().then(setBioInfo);
   }, [user]);
 
   if (!user) return null;
-
-  const save = async () => {
-    if (!form.firstName.trim() || !form.lastName.trim()) return toast.error('First and last name are required');
-    setSaving(true);
-    try {
-      await updateProfile({ firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim() });
-      toast.success('Profile updated');
-    } catch (e) {
-      toast.error(getErrorMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const changePassword = async () => {
     if (!pw.current) return toast.error('Enter your current password');
@@ -76,12 +58,11 @@ export default function Profile() {
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="First name"><input className="input" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
-          <Field label="Last name"><input className="input" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
-          <Field label="Phone"><input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-          <Field label="Email" hint="Ask an administrator to change your email address."><input className="input bg-gray-50" disabled value={user.email} /></Field>
+          <Field label="First name" hint="Contact IT/HR administration to update your official name."><input className="input bg-gray-50 dark:bg-slate-800 text-gray-500 cursor-not-allowed" disabled value={user.firstName} /></Field>
+          <Field label="Last name" hint="Contact IT/HR administration to update your official name."><input className="input bg-gray-50 dark:bg-slate-800 text-gray-500 cursor-not-allowed" disabled value={user.lastName} /></Field>
+          <Field label="Work Email" hint="Contact IT/HR administration to change your email address."><input className="input bg-gray-50 dark:bg-slate-800 text-gray-500 cursor-not-allowed" disabled value={user.email} /></Field>
+          <Field label="Mobile / Phone" hint="Contact IT/HR administration to update your registered mobile number."><input className="input bg-gray-50 dark:bg-slate-800 text-gray-500 cursor-not-allowed" disabled value={user.phone || user.mobile || '-'} /></Field>
         </div>
-        <div className="flex justify-end"><button className="btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving...' : 'Save changes'}</button></div>
       </div>
 
       {/* Biometric & Quick PIN Access */}

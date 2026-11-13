@@ -28,9 +28,6 @@ export const loginSchema = z.object({
 });
 
 export const updateProfileSchema = z.object({
-  firstName: z.string().trim().min(1, 'First name is required').max(50).optional(),
-  lastName: z.string().trim().min(1, 'Last name is required').max(50).optional(),
-  phone: z.string().trim().max(30).optional(),
   avatar: z.string().url().nullable().optional(),
 });
 

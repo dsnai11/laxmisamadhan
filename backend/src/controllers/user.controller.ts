@@ -63,9 +63,11 @@ export const getUsers = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     status: req.query.status as UserStatus,
     departmentId: isOrgWide(actorOf(req)) ? (req.query.departmentId as string) : (req.user!.departmentId || 'none'),
     managerId: req.query.managerId as string,
-    canViewTeamBucket: req.query.canViewTeamBucket !== undefined
-      ? req.query.canViewTeamBucket === 'true' || req.query.canViewTeamBucket === true
-      : undefined,
+    canViewTeamBucket: req.query.canViewTeamBucket === 'true'
+      ? true
+      : req.query.canViewTeamBucket === 'false'
+        ? false
+        : undefined,
     dateFrom: req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined,
     dateTo: req.query.dateTo ? new Date(req.query.dateTo as string) : undefined,
   };
@@ -176,7 +178,10 @@ export const bulkUserAction = asyncHandler(async (req: AuthenticatedRequest, res
 });
 
 export const getUserStats = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const stats = await userService.getUserStats();
+  const actor = actorOf(req);
+  const stats = await userService.getUserStats(
+    isOrgWide(actor) ? undefined : (actor.departmentId || 'none')
+  );
 
   res.json({
     success: true,
@@ -195,8 +200,13 @@ export const getSubordinates = asyncHandler(async (req: AuthenticatedRequest, re
 
 export const searchUsers = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { q, limit } = req.query;
-  
-  const users = await userService.searchUsers(q as string, parseInt(limit as string) || 10);
+  const actor = actorOf(req);
+
+  const users = await userService.searchUsers(
+    q as string,
+    parseInt(limit as string) || 10,
+    isOrgWide(actor) ? undefined : (actor.departmentId || 'none')
+  );
 
   res.json({
     success: true,
@@ -214,8 +224,8 @@ export const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { firstName, lastName, phone, avatar } = req.body;
-  const user = await userService.updateUser(req.user!.userId, { firstName, lastName, phone, avatar }, req.user!.userId);
+  const { avatar } = req.body;
+  const user = await userService.updateUser(req.user!.userId, { avatar }, req.user!.userId);
 
   res.json({
     success: true,

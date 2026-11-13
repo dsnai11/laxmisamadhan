@@ -41,6 +41,10 @@ export const bulkCreateUserSchema = z.object({
   })).min(1).max(10000),
 });
 
+export const updateProfileSchema = z.object({
+  avatar: z.string().url().nullable().optional(),
+});
+
 export const updateUserSchema = z.object({
   email: z.string().email('Invalid email address').optional(),
   firstName: z.string().min(1, 'First name is required').max(50).optional(),
@@ -93,7 +97,7 @@ export const userQuerySchema = z.object({
 export const bulkUserActionSchema = z.object({
   userIds: z.array(z.string().uuid()).min(1).max(100),
   action: z.enum(['activate', 'deactivate', 'suspend', 'delete', 'changeRole', 'changeDepartment', 'export']),
-  data: z.record(z.any()).optional(),
+  data: z.record(z.string(), z.any()).optional(),
 });
 
 export const adminResetPasswordSchema = z.object({
@@ -120,7 +124,7 @@ export const departmentSchema = z.object({
   assignStrategy: z.string().optional(),
   businessHours: z.object({
     timezone: z.string(),
-    schedule: z.record(z.object({
+    schedule: z.record(z.string(), z.object({
       start: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
       end: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
     })),
@@ -165,7 +169,7 @@ export const assetSchema = z.object({
   warrantyExpiry: z.string().datetime().optional(),
   value: z.number().positive().optional(),
   currency: z.string().length(3).default('USD'),
-  specifications: z.record(z.any()).optional(),
+  specifications: z.record(z.string(), z.any()).optional(),
 });
 
 export const updateAssetSchema = assetSchema.partial();
