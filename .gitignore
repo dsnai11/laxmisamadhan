@@ -51,3 +51,6 @@ ios/App/App.xcodeproj/xcuserdata/
 ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 *.keystore
 *.jks
+
+# Local handover notes (contain infra details; repo is public)
+HANDOVER.md
