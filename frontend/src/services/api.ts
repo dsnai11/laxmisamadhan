@@ -87,7 +87,10 @@ class ApiService {
             return this.client(originalRequest);
           } catch (refreshError) {
             this.clearAuth();
-            if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+            // Don't bounce visitors off pages that work without a session (e.g. a password
+            // reset link opened from email) — the startup /auth/me check 401s there by design.
+            const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/force-reset-password'];
+            if (typeof window !== 'undefined' && !PUBLIC_PATHS.some((p) => window.location.pathname.startsWith(p))) {
               window.location.href = '/login';
             }
             return Promise.reject(refreshError);

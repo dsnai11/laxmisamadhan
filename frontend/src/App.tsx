@@ -157,7 +157,8 @@ function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
-      <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
+      {/* Not wrapped in PublicRoute: a reset link must work even if this browser is signed in. */}
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<PublicRoute><VerifyEmailPage /></PublicRoute>} />
       <Route path="/force-reset-password" element={<ForceResetPassword />} />
       <Route path="/mfa-setup" element={<ProtectedRoute><MFASetupPage /></ProtectedRoute>} />

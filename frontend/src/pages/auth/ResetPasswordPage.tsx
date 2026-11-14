@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@services/api';
@@ -9,8 +9,21 @@ import { PASSWORD_HINT, passwordSchema } from '@utils/validation';
 export default function ResetPasswordPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const token = params.get('token') || '';
-  const email = params.get('email') || '';
+  // Reset emails put the token in the URL fragment (#token=...&email=...) so it never reaches
+  // server logs or Referer headers; older links used the query string. Accept both.
+  const [{ token, email }] = useState(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return {
+      token: hash.get('token') || params.get('token') || '',
+      email: hash.get('email') || params.get('email') || '',
+    };
+  });
+  // Drop the token from the address bar / history once captured.
+  useEffect(() => {
+    if (window.location.hash || window.location.search) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
