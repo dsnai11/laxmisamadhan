@@ -1,4 +1,4 @@
-import { EnvelopeIcon, PhoneIcon, UserCircleIcon, CheckBadgeIcon, ClockIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { EnvelopeIcon, PhoneIcon, UserCircleIcon, CheckBadgeIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { humanize, formatDate } from '@utils/helpers';
 import { useAuth } from '@context/AuthContext';
 import toast from 'react-hot-toast';
@@ -15,21 +15,14 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
     ...(user?.role ? [user.role] : []),
     ...(user?.roles || [])
   ]));
-  const isAgentOrStaff = userRoles.some((r) => ['AGENT', 'TEAM_LEAD'].includes(r)) || user?.id === ticket?.assignedToId;
-
-  // Locate assigner from ticket.assignedBy, else the latest *manual* assignment in history.
-  // System auto-assignments are stored with isSystem=true and the assignee's own id as the
-  // row's user (the column is required), so they must be skipped — otherwise the banner says
-  // the agent assigned the ticket to himself (or, on older rows, that the raiser did).
-  const assignUpdate = (ticket?.updates || []).find(
-    (u: any) =>
-      u.field === 'assignedTo' &&
-      u.user &&
-      !u.isSystem &&
-      u.user.id !== ticket?.assignedToId &&
-      u.user.id !== ticket?.raisedById
-  );
-  const assigner = ticket?.assignedBy || assignUpdate?.user;
+  // Who sees what on the top card:
+  //  - the person who raised the ticket  -> the assigned support agent (who is handling it)
+  //  - agents / team leads / the assignee -> the raiser (whom they are helping)
+  //  - other staff (e.g. admins)          -> the assigned support agent
+  const isViewerTheRaiser = !!user?.id && user.id === ticket?.raisedById;
+  const isAgentOrStaff =
+    !isViewerTheRaiser &&
+    (userRoles.some((r) => ['AGENT', 'TEAM_LEAD'].includes(r)) || user?.id === ticket?.assignedToId);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -50,104 +43,66 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
     }
   };
 
-  // If viewed on agent profile and ticket is assigned, display Ticket Assigned By
+  // Agent view: show the ticket raiser (requester) on top.
   if (isAgentOrStaff) {
-    const isAutoAssigned = !assigner && !!assignee;
-    const assignerName = assigner
-      ? `${assigner.firstName} ${assigner.lastName}`
-      : (isAutoAssigned ? 'System (Auto-Assignment)' : 'Unassigned');
-    const assignerPhone = assigner?.phone || assigner?.mobile;
-    const assignerRole = assigner?.role ? humanize(assigner.role) : (isAutoAssigned ? 'Automated Rule' : 'Department');
-    const assignerDept = assigner?.department?.name || ticket?.department?.name;
+    const raiser = ticket?.raisedBy;
+    const raiserName = raiser ? `${raiser.firstName || ''} ${raiser.lastName || ''}`.trim() : 'Unknown requester';
+    const raiserPhone = raiser?.phone || raiser?.mobile;
+    const raiserDept = raiser?.department?.name || ticket?.department?.name;
+    const raiserTitle = raiser?.jobTitle || 'Employee';
 
     return (
-      <div className="card p-4 sm:p-5 bg-gradient-to-r from-indigo-50/90 via-purple-50/30 to-white dark:from-slate-900 dark:via-indigo-950/20 dark:to-slate-900 border border-indigo-200/80 dark:border-indigo-900/50 shadow-xs">
+      <div className="card p-4 sm:p-5 bg-gradient-to-r from-emerald-50/90 via-teal-50/30 to-white dark:from-slate-900 dark:via-emerald-950/20 dark:to-slate-900 border border-emerald-200/80 dark:border-emerald-900/50 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Left Section: Assigner Avatar and Identity */}
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="relative shrink-0">
-              {assigner ? (
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 text-white font-bold flex items-center justify-center text-base shadow-sm ring-2 ring-white dark:ring-slate-800">
-                  {`${assigner.firstName?.[0] || ''}${assigner.lastName?.[0] || ''}`.toUpperCase()}
-                </div>
-              ) : isAutoAssigned ? (
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-sm ring-2 ring-white dark:ring-slate-800">
-                  AUTO
-                </div>
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 flex items-center justify-center shadow-2xs">
-                  <ClockIcon className="w-6 h-6 text-amber-500" />
-                </div>
-              )}
-              {assigner && (
-                <span
-                  className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-500 border-2 border-white dark:border-slate-800 rounded-full"
-                  title="Ticket Assigner"
-                />
-              )}
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold flex items-center justify-center text-base shadow-sm ring-2 ring-white dark:ring-slate-800">
+                {`${raiser?.firstName?.[0] || ''}${raiser?.lastName?.[0] || ''}`.toUpperCase() || '?'}
+              </div>
+              <span
+                className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full"
+                title="Ticket Raiser"
+              />
             </div>
 
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 flex items-center gap-1">
-                  <UserPlusIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400 inline" />
-                  Ticket Assigned By
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                  <UserCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400 inline" />
+                  Ticket Raised By
                 </span>
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                    assigner
-                      ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
-                      : isAutoAssigned
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                  }`}
-                >
-                  {assigner ? `Assigner (${assignerRole})` : (isAutoAssigned ? 'Auto-Assigned by System' : 'Awaiting Assignment')}
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  Requester
                 </span>
               </div>
-
-              {assignee ? (
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate flex items-center gap-1.5">
-                    {assignerName}
-                    {assigner && <CheckBadgeIcon className="w-4 h-4 text-indigo-500 shrink-0" title="Verified Staff" />}
-                  </h3>
-                  <p className="text-xs text-gray-600 dark:text-slate-400 truncate mt-0.5">
-                    <span className="font-medium text-gray-700 dark:text-slate-300">{assignerRole}</span>
-                    {assignerDept ? ` · ${assignerDept}` : ''}
-                    {assigner?.employeeId ? ` · ID: ${assigner.employeeId}` : ''}
-                    {ticket.assignedAt ? ` · ${formatDate(ticket.assignedAt, 'datetime')}` : ''}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-200">This ticket has not been assigned yet</h3>
-                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                    Currently queued in <span className="font-medium text-gray-700 dark:text-slate-300">{ticket?.department?.name || 'department'}</span>.
-                  </p>
-                </div>
-              )}
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate">{raiserName}</h3>
+              <p className="text-xs text-gray-600 dark:text-slate-400 truncate mt-0.5">
+                <span className="font-medium text-gray-700 dark:text-slate-300">{raiserTitle}</span>
+                {raiserDept ? ` · ${raiserDept}` : ''}
+                {raiser?.employeeId ? ` · ID: ${raiser.employeeId}` : ''}
+                {raiser?.site ? ` · ${raiser.site}` : ''}
+                {ticket?.createdAt ? ` · ${formatDate(ticket.createdAt, 'datetime')}` : ''}
+              </p>
             </div>
           </div>
 
-          {/* Right Section: Contact pills or assignment badge */}
-          {assigner && (
-            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-indigo-100/80 dark:border-indigo-900/40">
-              {assignerPhone && (
-                <div className="flex items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-slate-700 shadow-2xs gap-2">
+          {raiser && (raiserPhone || raiser.email) && (
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-emerald-100/80 dark:border-emerald-900/40">
+              {raiserPhone && (
+                <div className="flex items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-slate-700 shadow-2xs gap-2">
                   <PhoneIcon className="h-4 w-4 text-emerald-600 shrink-0" />
                   <button
                     type="button"
-                    onClick={(e) => handlePhoneClick(assignerPhone, e)}
-                    className="text-xs font-semibold text-gray-800 dark:text-slate-200 hover:text-indigo-600 transition-colors cursor-pointer text-left"
+                    onClick={(e) => handlePhoneClick(raiserPhone, e)}
+                    className="text-xs font-semibold text-gray-800 dark:text-slate-200 hover:text-emerald-600 transition-colors cursor-pointer text-left"
                     title="Click to copy phone number"
                   >
-                    {assignerPhone}
+                    {raiserPhone}
                   </button>
                   <button
                     type="button"
-                    onClick={() => copyToClipboard(assignerPhone, 'phone number')}
-                    className="text-[10px] text-gray-500 dark:text-slate-400 hover:text-indigo-700 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 ml-1 hover:bg-indigo-50 transition-colors font-medium"
+                    onClick={() => copyToClipboard(raiserPhone, 'phone number')}
+                    className="text-[10px] text-gray-500 dark:text-slate-400 hover:text-emerald-700 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 ml-1 hover:bg-emerald-50 transition-colors font-medium"
                     title="Copy phone number"
                   >
                     Copy
@@ -155,20 +110,20 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
                 </div>
               )}
 
-              {assigner.email && (
-                <div className="flex items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-slate-700 shadow-2xs gap-2">
-                  <EnvelopeIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              {raiser.email && (
+                <div className="flex items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-slate-700 shadow-2xs gap-2">
+                  <EnvelopeIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <a
-                    href={`mailto:${assigner.email}`}
-                    className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 hover:underline max-w-[180px] sm:max-w-xs truncate"
-                    title="Email Assigner"
+                    href={`mailto:${raiser.email}`}
+                    className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline max-w-[180px] sm:max-w-xs truncate"
+                    title="Email Requester"
                   >
-                    {assigner.email}
+                    {raiser.email}
                   </a>
                   <button
                     type="button"
-                    onClick={() => copyToClipboard(assigner.email, 'email address')}
-                    className="text-[10px] text-gray-500 dark:text-slate-400 hover:text-indigo-700 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 ml-1 hover:bg-indigo-50 transition-colors font-medium"
+                    onClick={() => copyToClipboard(raiser.email, 'email address')}
+                    className="text-[10px] text-gray-500 dark:text-slate-400 hover:text-emerald-700 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 ml-1 hover:bg-emerald-50 transition-colors font-medium"
                     title="Copy email address"
                   >
                     Copy
