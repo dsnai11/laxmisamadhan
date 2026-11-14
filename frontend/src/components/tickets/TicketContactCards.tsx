@@ -1,6 +1,8 @@
 import { EnvelopeIcon, PhoneIcon, UserCircleIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import { humanize } from '@utils/helpers';
 import toast from 'react-hot-toast';
+import { useAuth } from '@context/AuthContext';
+import { showsRaiserOnTop } from './AssignedAgentTopTile';
 
 interface TicketContactCardsProps {
   ticket: any;
@@ -8,6 +10,9 @@ interface TicketContactCardsProps {
 }
 
 export default function TicketContactCards({ ticket, currentUserId }: TicketContactCardsProps) {
+  const { user } = useAuth();
+  // The top card already shows the raiser to agents, so don't repeat it here.
+  const hideRaiserCard = showsRaiserOnTop(user, ticket);
   const raiser = ticket.raisedBy;
   const assignee = ticket.assignedTo;
 
@@ -166,7 +171,8 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
         </div>
       ) : null}
 
-      {/* 2. Raiser Contact Card (For Agent & Staff) */}
+      {/* 2. Raiser Contact Card — hidden when the top card already shows the raiser */}
+      {!hideRaiserCard && (
       <div className="bg-gradient-to-r from-emerald-50 to-teal-50/50 dark:from-slate-900 dark:to-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-4 shadow-2xs space-y-3">
         <div className="flex items-center justify-between border-b border-emerald-100 dark:border-emerald-900/40 pb-2">
           <div className="flex items-center gap-2">
@@ -234,6 +240,7 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
