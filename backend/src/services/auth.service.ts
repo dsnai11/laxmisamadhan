@@ -116,8 +116,14 @@ class AuthService {
     return { user, tokens };
   }
 
-  async login(identifier: string, password: string, mfaCode?: string, rememberMe = false): Promise<LoginResult> {
+  /**
+   * Resolve an employee code (5487, LIF5487, 05487, lif-5487 ...) or email to exactly one user.
+   * Exact candidates only: a partial "ends with" match let short inputs like "7" hit hundreds
+   * of employees, so login/reset acted on an arbitrary account. Returns null if 0 or >1 match.
+   */
+  private async findUserByIdentifier(identifier: string) {
     const trimmed = (identifier || '').trim();
+    if (!trimmed) return { user: null, ambiguous: false };
     const digitsOnly = trimmed.replace(/\D/g, '');
     const withoutPrefix = trimmed.replace(/^(LIFC?|EMP)[-_]?/i, '');
     const strippedZeros = digitsOnly.replace(/^0+/, '');
@@ -136,15 +142,23 @@ class AuthService {
       digitsOnly ? digitsOnly.padStart(5, '0') : '',
     ])).filter(Boolean);
 
-    const user = await prisma.user.findFirst({
+    const matches = await prisma.user.findMany({
       where: {
         OR: [
           { employeeId: { in: candidates, mode: 'insensitive' } },
           { email: { equals: trimmed.toLowerCase(), mode: 'insensitive' } },
-          ...(digitsOnly ? [{ employeeId: { endsWith: digitsOnly } }] : []),
         ],
       },
+      take: 2,
     });
+
+    if (matches.length !== 1) return { user: null, ambiguous: matches.length > 1 };
+    return { user: matches[0], ambiguous: false };
+  }
+
+  async login(identifier: string, password: string, mfaCode?: string, rememberMe = false): Promise<LoginResult> {
+    const trimmed = (identifier || '').trim();
+    const { user } = await this.findUserByIdentifier(trimmed);
 
     if (!user) {
       await verifyPassword(password, DUMMY_PASSWORD_HASH);
@@ -384,45 +398,17 @@ class AuthService {
 
   async forgotPassword(identifierOrEmail: string): Promise<void> {
     const normalized = (identifierOrEmail || '').trim();
-    const digitsOnly = normalized.replace(/\D/g, '');
-    const withoutPrefix = normalized.replace(/^(LIFC?|EMP)[-_]?/i, '');
-    const strippedZeros = digitsOnly.replace(/^0+/, '');
+    const { user, ambiguous } = await this.findUserByIdentifier(normalized);
 
-    const candidates = Array.from(new Set([
-      normalized,
-      normalized.toLowerCase(),
-      normalized.toUpperCase(),
-      digitsOnly,
-      withoutPrefix,
-      strippedZeros,
-      'LIF' + digitsOnly,
-      'LIF' + withoutPrefix,
-      'LIF-' + digitsOnly,
-      digitsOnly ? digitsOnly.padStart(4, '0') : '',
-      digitsOnly ? digitsOnly.padStart(5, '0') : '',
-    ])).filter(Boolean);
-
-    // Exact matches only. The old `endsWith` fallback let a partial number such as
-    // "87" match dozens of employees and emailed a reset link to an arbitrary one.
-    const matches = await prisma.user.findMany({
-      where: {
-        OR: [
-          { employeeId: { in: candidates, mode: 'insensitive' } },
-          { email: { equals: normalized.toLowerCase(), mode: 'insensitive' } },
-        ],
-      },
-      take: 2,
-    });
-
-    if (matches.length === 0) {
-      logger.warn('Password reset requested for non-existent account', { identifier: maskIdentifier(normalized) });
+    if (!user) {
+      logger.warn(
+        ambiguous
+          ? 'Password reset identifier matched multiple accounts; no email sent'
+          : 'Password reset requested for non-existent account',
+        { identifier: maskIdentifier(normalized) }
+      );
       return;
     }
-    if (matches.length > 1) {
-      logger.warn('Password reset identifier matched multiple accounts; no email sent', { identifier: maskIdentifier(normalized) });
-      return;
-    }
-    const user = matches[0];
 
     const resetToken = generateToken(32);
     const resetTokenHash = await hashPassword(resetToken);

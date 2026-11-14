@@ -74,3 +74,29 @@ describe('Forgot password: employee code / email lookup', () => {
     expect(emailMock.sendPasswordResetEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('Login: employee code lookup', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not use a partial "ends with" match and never touches another account', async () => {
+    prismaMock.user.findMany.mockResolvedValue([]);
+
+    await expect(authService.login('7', 'wrong-password')).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+    const or = prismaMock.user.findMany.mock.calls.at(-1)![0].where.OR;
+    expect(or.some((c: any) => c.employeeId?.endsWith !== undefined)).toBe(false);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('treats an identifier matching several accounts as invalid instead of picking one', async () => {
+    prismaMock.user.findMany.mockResolvedValue([
+      { id: 'a', passwordHash: 'x', failedLoginAttempts: 0 },
+      { id: 'b', passwordHash: 'y', failedLoginAttempts: 0 },
+    ]);
+
+    await expect(authService.login('5487', 'whatever')).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+});
