@@ -85,13 +85,23 @@ class CustomFieldService {
     const validatedValue = this.validateValue(field, value);
     if (!validatedValue.valid) throw new Error(validatedValue.error);
 
-    const record = await prisma.customFieldValue.upsert({
-      where: { fieldId_ticketId_userId: { fieldId, ticketId: ticketId || '', userId } },
-      create: { fieldId, ticketId, userId, value: validatedValue.value },
-      update: { value: validatedValue.value },
+    // No composite unique key exists on CustomFieldValue (and ticketId is nullable),
+    // so look the row up explicitly instead of using upsert.
+    const existing = await prisma.customFieldValue.findFirst({
+      where: { fieldId, ticketId: ticketId ?? null, userId },
+      select: { id: true },
     });
 
-    return record;
+    if (existing) {
+      return prisma.customFieldValue.update({
+        where: { id: existing.id },
+        data: { value: validatedValue.value },
+      });
+    }
+
+    return prisma.customFieldValue.create({
+      data: { fieldId, ticketId, userId, value: validatedValue.value },
+    });
   }
 
   async getFieldValues(ticketId: string): Promise<any[]> {

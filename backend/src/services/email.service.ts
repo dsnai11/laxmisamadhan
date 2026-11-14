@@ -454,6 +454,34 @@ class EmailService {
     });
   }
 
+  async sendAccountLockedEmail(to: string, firstName: string, lockedUntil: Date): Promise<boolean> {
+    const unlockTime = lockedUntil.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    const content = `
+      <p style="margin: 0 0 16px; font-size: 14px; color: #374151; line-height: 1.6;">
+        Hello <strong>${firstName || 'User'}</strong>,
+      </p>
+      <p style="margin: 0 0 20px; font-size: 14px; color: #374151; line-height: 1.6;">
+        Your Laxmi Samadhan account has been temporarily locked after several unsuccessful sign-in attempts.
+        You can try again after <strong>${unlockTime} IST</strong>, or use <em>Forgot Password</em> to reset it.
+      </p>
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 14px 18px; margin-top: 16px;">
+        <p style="margin: 0; color: #991b1b; font-size: 13px; line-height: 1.5;">
+          <strong>Notice:</strong> If these attempts were not made by you, please report it immediately to your IT Administrator or contact IT Security.
+        </p>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to,
+      subject: 'Security Alert: Account Temporarily Locked',
+      html: this.getEmailWrapper('Account Temporarily Locked', 'Too many failed sign-in attempts were detected.', content),
+    });
+  }
+
   async sendWelcomeEmail(to: string, firstName: string, portalUrl: string, temporaryPassword?: string): Promise<boolean> {
     const content = `
       <p style="margin: 0 0 16px; font-size: 14px; color: #374151; line-height: 1.6;">
