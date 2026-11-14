@@ -115,6 +115,19 @@ wait_healthy() {
   return 1
 }
 
+# Run a package's unit tests; abort the deploy on any failure. These tests lock in fixes that
+# regressed before (assigner display, escalation repeats, employee-code lookup, ...).
+run_tests() {
+  local dir="$1" label="$2"
+  info "Running $label tests ..."
+  local out
+  if ! out="$(cd "$ROOT/$dir" && npx vitest run 2>&1)"; then
+    echo "$out" | grep -E "FAIL|×|AssertionError|Error:" | head -30
+    die "$label tests failed — deploy aborted. Fix the failing tests first."
+  fi
+  ok "$label tests passed ($(echo "$out" | grep -oE 'Tests +[0-9]+ passed' | head -1 | tr -s ' '))"
+}
+
 # ---------------------------------------------------------------- backend
 BACKEND_FILES=(src prisma/schema.prisma prisma/seed.ts prisma/seed_sla_policies.sql package.json package-lock.json tsconfig.json)
 
@@ -154,6 +167,9 @@ deploy_backend() {
     die "schema.prisma changed. Re-run with --apply-schema to take a pg_dump and run 'prisma db push' (aborts on data loss)."
   fi
   [[ $DRY_RUN -eq 1 ]] && { ok "Dry run — nothing changed on the server."; return 0; }
+
+  [[ -d node_modules ]] || die "backend/node_modules missing — run 'npm install' in backend/ (tests must run before deploying)."
+  run_tests backend Backend
 
   if [[ -d node_modules ]]; then
     info "Type-checking backend locally (tsc --noEmit) ..."
@@ -240,6 +256,7 @@ deploy_frontend() {
     rm -rf node_modules
     "${PNPM[@]}" install --ignore-workspace --shamefully-hoist --config.node-linker=hoisted
   fi
+  run_tests frontend Frontend
   info "Building frontend (VITE_API_URL=/api/v1) ..."
   rm -rf dist
   VITE_API_URL=/api/v1 "${PNPM[@]}" run build

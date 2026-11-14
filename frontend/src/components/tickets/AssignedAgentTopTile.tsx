@@ -2,22 +2,10 @@ import { EnvelopeIcon, PhoneIcon, UserCircleIcon, CheckBadgeIcon, ClockIcon } fr
 import { humanize, formatDate } from '@utils/helpers';
 import { useAuth } from '@context/AuthContext';
 import toast from 'react-hot-toast';
+import { showsRaiserOnTop } from '@utils/ticketContacts';
 
 interface AssignedAgentTopTileProps {
   ticket: any;
-}
-
-/**
- * Who sees what on the top card:
- *  - the person who raised the ticket  -> the assigned support agent (who is handling it)
- *  - agents / team leads / the assignee -> the raiser (whom they are helping)
- *  - other staff (e.g. admins)          -> the assigned support agent
- * Shared with TicketContactCards so the side panel doesn't repeat the raiser.
- */
-export function showsRaiserOnTop(user: any, ticket: any): boolean {
-  if (!user?.id || user.id === ticket?.raisedById) return false;
-  const roles: string[] = Array.from(new Set([...(user.role ? [user.role] : []), ...(user.roles || [])]));
-  return roles.some((r) => ['AGENT', 'TEAM_LEAD'].includes(r)) || user.id === ticket?.assignedToId;
 }
 
 export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTileProps) {

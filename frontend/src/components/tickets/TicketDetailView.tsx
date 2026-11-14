@@ -11,6 +11,7 @@ import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';
 import SLACountdown from '@components/sla/SLACountdown';
 import TicketContactCards from '@components/tickets/TicketContactCards';
+import { isAutomaticAssignment } from '@utils/ticketContacts';
 import AssignedAgentTopTile from '@components/tickets/AssignedAgentTopTile';
 import {
   Avatar,
@@ -43,10 +44,9 @@ function fullName(u?: { firstName?: string; lastName?: string } | null) {
 
 function describeUpdate(u: any, ticket?: any): string {
   const who = fullName(u.user) || 'Someone';
-  const isRaiser = u.user?.id === ticket?.raisedById || u.user?.role === 'RAISER';
   if (u.field === 'status') return `${who} changed status from ${humanize(u.oldValue)} to ${humanize(u.newValue)}`;
   if (u.field === 'assignedTo') {
-    if (u.isSystem || isRaiser || u.oldValue === 'Unassigned') {
+    if (isAutomaticAssignment(u, ticket) || u.oldValue === 'Unassigned') {
       return `Ticket assigned to ${humanize(u.newValue) || 'support agent'}`;
     }
     return `${who} assigned the ticket to ${humanize(u.newValue) || 'support agent'}`;

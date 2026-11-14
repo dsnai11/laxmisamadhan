@@ -2,7 +2,7 @@ import { EnvelopeIcon, PhoneIcon, UserCircleIcon, ChatBubbleLeftEllipsisIcon } f
 import { humanize } from '@utils/helpers';
 import toast from 'react-hot-toast';
 import { useAuth } from '@context/AuthContext';
-import { showsRaiserOnTop } from './AssignedAgentTopTile';
+import { showsRaiserOnTop, findManualAssigner } from '@utils/ticketContacts';
 
 interface TicketContactCardsProps {
   ticket: any;
@@ -24,10 +24,7 @@ export default function TicketContactCards({ ticket, currentUserId }: TicketCont
   const raiserPhone = raiser?.phone || raiser?.mobile || '+91-9829012345';
   const assigneePhone = assignee?.phone || assignee?.mobile || '+91-9829098765';
 
-  const isRaiser = (u: any) => !u || u.id === raiser?.id || u.role === 'RAISER';
-  const assignUpdate = (ticket?.updates || []).find((u: any) => u.field === 'assignedTo' && u.user && !isRaiser(u.user) && !u.isSystem);
-  const rawAssigner = ticket.assignedBy && !isRaiser(ticket.assignedBy) ? ticket.assignedBy : assignUpdate?.user;
-  const assigner = !isRaiser(rawAssigner) ? rawAssigner : null;
+  const assigner = findManualAssigner(ticket);
   const isViewerTheAssignee = !!currentUserId && currentUserId === assignee?.id;
   const teamLead = ticket.team?.lead && ticket.team.lead.id !== assignee?.id ? ticket.team.lead : null;
   const displayAssigner = assigner || teamLead;

@@ -65,6 +65,21 @@ interface TicketQueryParams {
   userDepartmentId?: string;
 }
 
+/**
+ * Decides how an assignment is recorded. Auto-assignments (system note, no actor, or the raiser
+ * as actor — ticket creation runs auto-assign in the raiser's request) must be stored with
+ * assignedById = null and isSystem = true, so no UI shows the raiser or the agent as the assigner.
+ * Covered by src/__tests__/assignment_actor.test.ts — this has regressed before.
+ */
+export function resolveAssignmentActor(
+  note: string | undefined,
+  assignedById: string | null | undefined,
+  raisedById: string
+): { isSystem: boolean; assignedById: string | null } {
+  const isSystem = note === 'Auto-assigned by system' || !assignedById || assignedById === raisedById;
+  return { isSystem, assignedById: isSystem ? null : (assignedById as string) };
+}
+
 class TicketService {
   async createTicket(data: CreateTicketData): Promise<any> {
     const department = await prisma.department.findUnique({
@@ -478,8 +493,8 @@ class TicketService {
       throw new Error('Tickets can only be assigned to active staff members');
     }
 
-    const isSystemAutoAssign = note === 'Auto-assigned by system' || !assignedById || assignedById === ticket.raisedById;
-    const actualAssignedById = isSystemAutoAssign ? null : assignedById;
+    const { isSystem: isSystemAutoAssign, assignedById: actualAssignedById } =
+      resolveAssignmentActor(note, assignedById, ticket.raisedById);
 
     const updatedTicket = await prisma.ticket.update({
       where: { id: ticket.id },
