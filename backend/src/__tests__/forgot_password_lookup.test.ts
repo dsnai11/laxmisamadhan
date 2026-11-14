@@ -100,3 +100,17 @@ describe('Login: employee code lookup', () => {
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });
+
+describe('Forgot password: reset link format', () => {
+  it('uses an uncached /reset-password?v=2 URL and keeps the token in the fragment', async () => {
+    vi.clearAllMocks();
+    prismaMock.user.findMany.mockResolvedValue([user]);
+    prismaMock.user.update.mockResolvedValue(user);
+
+    await authService.forgotPassword('5487');
+
+    const link: string = emailMock.sendPasswordResetEmail.mock.calls[0][1];
+    expect(link).toMatch(/\/reset-password\?v=2#token=[^&]+&email=someone%40lifc\.in$/);
+    expect(link.split('#')[0]).not.toContain('token=');
+  });
+});

@@ -422,7 +422,10 @@ class AuthService {
       },
     });
 
-    const resetLink = `${config.frontendUrl}/reset-password#token=${resetToken}&email=${encodeURIComponent(user.email)}`;
+    // `?v=2` gives the page a URL no browser has cached: before 2026-11-14 index.html was served
+    // without Cache-Control, so browsers kept an old /reset-password that redirected to /login.
+    // The token stays in the fragment so it never reaches server logs or Referer headers.
+    const resetLink = `${config.frontendUrl}/reset-password?v=2#token=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
     // Background the email sending so the user receives a prompt response and is not blocked by SMTP connection latency
     emailService.sendPasswordResetEmail(user.email, resetLink).catch((err) => {
