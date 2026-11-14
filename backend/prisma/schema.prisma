@@ -215,9 +215,29 @@ model Department {
   teams           Team[]         @relation("TeamDepartment")
   slaPolicies     SLAPolicy[]    @relation("DepartmentSlaPolicy")
   customFields    CustomField[]  @relation("CustomFieldDepartment")
+  mailbox         DepartmentMailbox?
 
   @@index([type])
   @@index([parentId])
+}
+
+// Per-department inbound mailbox (email-to-ticket). Kept out of Department so the
+// encrypted credentials are never returned by normal department queries.
+model DepartmentMailbox {
+  departmentId      String     @id
+  department        Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  enabled           Boolean    @default(false)
+  host              String     @default("mail.lifc.in")
+  port              Int        @default(993)
+  username          String?    // defaults to the department's supportEmail
+  encryptedPassword String?    // AES-256-GCM via utils/encryption; never sent to clients
+  uidValidity       String?    // IMAP UIDVALIDITY of INBOX when lastUid was recorded
+  lastUid           Int?       // highest UID already handled; older mail is never re-processed
+  lastCheckedAt     DateTime?
+  lastError         String?
+  ticketsCreated    Int        @default(0)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 }
 
 model TicketCategoryConfig {

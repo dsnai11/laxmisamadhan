@@ -478,6 +478,27 @@ class ApiService {
     return response.data.data!;
   }
 
+  // Department email-to-ticket mailbox (password is write-only; responses only say hasPassword)
+  async getDepartmentMailbox(id: string): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>(`/departments/${id}/mailbox`);
+    return response.data.data;
+  }
+
+  async updateDepartmentMailbox(id: string, data: { enabled?: boolean; host?: string; port?: number; username?: string | null; password?: string }): Promise<any> {
+    const response = await this.client.put<ApiResponse<any>>(`/departments/${id}/mailbox`, data);
+    return response.data.data;
+  }
+
+  async testDepartmentMailbox(id: string, data: { host?: string; port?: number; username?: string | null; password?: string } = {}): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>(`/departments/${id}/mailbox/test`, data);
+    return response.data.data;
+  }
+
+  async checkDepartmentMailboxNow(id: string): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>(`/departments/${id}/mailbox/check-now`, {});
+    return response.data.data;
+  }
+
   async deleteDepartment(id: string): Promise<void> {
     await this.client.delete(`/departments/${id}`);
   }

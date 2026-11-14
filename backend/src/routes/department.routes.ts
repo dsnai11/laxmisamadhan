@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRole } from '@middleware/auth.middleware';
 import { validateBody, validateQuery, validateParams } from '@middleware/validation.middleware';
 import * as departmentController from '@controllers/department.controller';
+import * as mailboxController from '@controllers/mailbox.controller';
 import * as validators from '@validators/user.validator';
 
 const router = Router();
@@ -19,6 +20,12 @@ router.delete('/:id', requireRole('SUPER_ADMIN', 'ADMIN'), departmentController.
 
 router.patch('/:id/head', requireRole('SUPER_ADMIN', 'ADMIN'), departmentController.assignHead);
 router.get('/:id/stats', departmentController.getDepartmentStats);
+
+// Email-to-ticket mailbox (password is write-only and encrypted at rest)
+router.get('/:id/mailbox', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), mailboxController.getMailbox);
+router.put('/:id/mailbox', requireRole('SUPER_ADMIN', 'ADMIN'), mailboxController.updateMailbox);
+router.post('/:id/mailbox/test', requireRole('SUPER_ADMIN', 'ADMIN'), mailboxController.testMailbox);
+router.post('/:id/mailbox/check-now', requireRole('SUPER_ADMIN', 'ADMIN'), mailboxController.checkMailboxNow);
 
 router.get('/:id/categories', departmentController.getCategoryConfigs);
 router.post('/:id/categories', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'), departmentController.createCategoryConfig);
@@ -52,4 +59,4 @@ const requireTeamBucketAccess = (req: any, res: any, next: any) => {
 // Team bucket — visible to admin, dept head, team lead, or explicitly permitted agents
 router.get('/:id/teams/:teamId/bucket', requireTeamBucketAccess, departmentController.getTeamBucket);
 
-export default router;
+export default router;

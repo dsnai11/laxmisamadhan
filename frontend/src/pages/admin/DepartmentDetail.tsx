@@ -7,6 +7,7 @@ import { useAuth } from '@context/AuthContext';
 import { formatDuration, humanize } from '@utils/helpers';
 import TeamsManager from '@components/admin/TeamsManager';
 import CategoryConfigManager from '@components/admin/CategoryConfigManager';
+import DepartmentMailboxCard from '@components/admin/DepartmentMailboxCard';
 import { ConfirmModal, ErrorState, Field, getErrorMessage, PageLoader, STAFF_ROLES } from '@components/common/ui';
 
 export default function AdminDepartmentDetail() {
@@ -153,6 +154,8 @@ export default function AdminDepartmentDetail() {
           <div className="flex justify-end"><button className="btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving...' : 'Save changes'}</button></div>
         </div>
       )}
+
+      {isOrgWide && <DepartmentMailboxCard departmentId={id} supportEmail={dept.supportEmail} />}
 
       <CategoryConfigManager departmentId={id} canManage={canManageTeams} />
 

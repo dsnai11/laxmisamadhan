@@ -2,9 +2,10 @@ import { config } from '@config/index';
 import { prisma } from '@config/prisma';
 import logger from '@utils/logger';
 import { logActivity } from '@middleware/audit.middleware';
-import emailService from './email.service';
 import wsService from './websocket.service';
-import { TicketCategory, TicketPriority, TicketStatus } from '@prisma/client';
+import ticketService from './ticket.service';
+import { TicketPriority, TicketStatus } from '@prisma/client';
+import { skipReason, extractTicketNumber, canReplyToTicket, guessCategory } from './inboundRules';
 
 export interface InboundEmailPayload {
   fromEmail: string;
@@ -15,55 +16,64 @@ export interface InboundEmailPayload {
   attachments?: { fileName: string; mimeType: string; content?: string }[];
 }
 
+export type InboundResult =
+  | { action: 'TICKET_CREATED'; ticket: any }
+  | { action: 'COMMENT_ADDED'; ticket: any }
+  | { action: 'SKIPPED'; reason: string };
+
+const clean = (v?: string) => (v || '').replace(/^["']|["']$/g, '').trim().toLowerCase();
+
 class InboundEmailService {
-  /**
-   * Helper to generate unique ticket number based on department type and year
-   */
-  private async generateTicketNumber(departmentId?: string): Promise<string> {
-    let prefix = 'TKT';
-    if (departmentId) {
-      const dept = await prisma.department.findUnique({ where: { id: departmentId } });
-      if (dept) {
-        if (dept.name.toLowerCase().includes('hardware')) prefix = 'HW';
-        else if (dept.name.toLowerCase().includes('software') || dept.name.toLowerCase().includes('application')) prefix = 'SW';
-        else if (dept.type === 'IT') prefix = 'IT';
-      }
-    }
-    const year = new Date().getFullYear().toString().slice(-2);
-    const count = await prisma.ticket.count();
-    let seq = count + 1;
-    let ticketNumber = `${prefix}-${year}-${String(seq).padStart(5, '0')}`;
-    while (await prisma.ticket.findUnique({ where: { ticketNumber }, select: { id: true } })) {
-      seq++;
-      ticketNumber = `${prefix}-${year}-${String(seq).padStart(5, '0')}`;
-    }
-    return ticketNumber;
+  /** Addresses the system sends from or receives on — mail from these is never ticketed (loop guard). */
+  async systemAddresses(): Promise<string[]> {
+    const depts = await prisma.department.findMany({ where: { supportEmail: { not: null } }, select: { supportEmail: true } });
+    const fromHeader = clean(config.email.from).match(/<([^>]+)>/)?.[1] || clean(config.email.from);
+    return Array.from(new Set([clean(config.email.user), fromHeader, ...depts.map((d) => clean(d.supportEmail || ''))].filter(Boolean)));
+  }
+
+  /** Company mail domains (from department addresses and the system mailbox). Only these may raise tickets. */
+  async allowedDomains(): Promise<string[]> {
+    return Array.from(new Set((await this.systemAddresses()).map((a) => a.split('@')[1]).filter(Boolean)));
   }
 
   /**
-   * Process an incoming email and either create a new ticket or append a reply comment
+   * Turn one email into a ticket (or a reply comment) for the given department.
+   * departmentId is the department whose mailbox received the email. Without it (admin
+   * simulator / webhook) the department is looked up by the recipient's support address.
    */
-  async processInboundEmail(payload: InboundEmailPayload): Promise<{ action: 'TICKET_CREATED' | 'COMMENT_ADDED'; ticket: any }> {
-    const fromEmail = payload.fromEmail.toLowerCase().trim();
-    const toEmail = payload.toEmail.toLowerCase().trim();
-    const subject = payload.subject.trim();
-    const body = payload.body.trim();
+  async processInboundEmail(payload: InboundEmailPayload, departmentId?: string): Promise<InboundResult> {
+    const fromEmail = clean(payload.fromEmail);
+    const toEmail = clean(payload.toEmail);
+    const subject = (payload.subject || '').trim() || 'No subject (raised via email)';
+    const body = (payload.body || '').trim();
 
-    logger.info('Processing inbound email', { fromEmail, toEmail, subject });
+    const reason = skipReason(fromEmail, subject, {
+      systemAddresses: await this.systemAddresses(),
+      allowedDomains: await this.allowedDomains(),
+    });
+    if (reason) {
+      logger.info('Inbound email skipped', { reason, subject: subject.slice(0, 80) });
+      return { action: 'SKIPPED', reason };
+    }
 
-    // 1. Check if sender exists as a User, or auto-create a RAISER user account
-    let raiser = await prisma.user.findUnique({ where: { email: fromEmail } });
+    const department = departmentId
+      ? await prisma.department.findUnique({ where: { id: departmentId } })
+      : await prisma.department.findFirst({ where: { supportEmail: { equals: toEmail, mode: 'insensitive' } } });
+    if (!department) {
+      logger.warn('Inbound email skipped: no department uses this support address', { toEmail });
+      return { action: 'SKIPPED', reason: `no department has support email ${toEmail}` };
+    }
+
+    // Sender -> user (auto-create a raiser account for colleagues not yet in the portal).
+    let raiser = await prisma.user.findFirst({ where: { email: { equals: fromEmail, mode: 'insensitive' } } });
     if (!raiser) {
-      const nameParts = (payload.fromName || fromEmail.split('@')[0]).split(' ');
-      const firstName = nameParts[0] || 'Email';
-      const lastName = nameParts.slice(1).join(' ') || 'User';
-
+      const nameParts = (payload.fromName || fromEmail.split('@')[0]).trim().split(/\s+/);
       raiser = await prisma.user.create({
         data: {
           email: fromEmail,
           passwordHash: 'EMAIL_AUTO_CREATED_USER',
-          firstName,
-          lastName,
+          firstName: nameParts[0] || 'Email',
+          lastName: nameParts.slice(1).join(' ') || 'User',
           role: 'RAISER',
           roles: ['RAISER'],
           status: 'ACTIVE',
@@ -71,177 +81,52 @@ class InboundEmailService {
           backupCodes: [],
         },
       });
-      logger.info('Auto-created user from inbound email', { userId: raiser.id, email: fromEmail });
+      logger.info('Auto-created raiser from inbound email', { userId: raiser.id, departmentId: department.id });
     }
 
-    // 2. Check if Subject contains an existing Ticket Number (e.g. TKT-26-00040, HW-26-00001, INC-26-00001)
-    const ticketMatch = subject.match(/(?:TKT|INC|HW|SW|[A-Z]{2,5})-\d{2}-\d{4,6}/i) || subject.match(/(?:TKT|INC|HW|SW|[A-Z]{2,5})-\d+/i);
-    if (ticketMatch) {
-      const ticketNumber = ticketMatch[0].toUpperCase();
-      const existingTicket = await prisma.ticket.findUnique({
+    // Reply to an existing ticket? Only people involved in it (or staff) may comment by email.
+    const ticketNumber = extractTicketNumber(subject);
+    if (ticketNumber) {
+      const existing = await prisma.ticket.findUnique({
         where: { ticketNumber },
-        include: { raisedBy: true, assignedTo: true, department: true },
+        include: { watchers: { select: { userId: true } } },
       });
-
-      if (existingTicket) {
-        // Append email reply as a Comment
+      if (existing && canReplyToTicket(raiser, { ...existing, watcherIds: existing.watchers.map((w) => w.userId) })) {
         const comment = await prisma.comment.create({
-          data: {
-            ticketId: existingTicket.id,
-            userId: raiser.id,
-            content: `📧 [Email Reply from ${fromEmail}]\n\n${body}`,
-            isInternal: false,
-            isSystem: false,
-          },
+          data: { ticketId: existing.id, userId: raiser.id, content: `📧 Email reply:\n\n${body}`, isInternal: false, isSystem: false },
         });
-
-        // Re-open ticket if it was resolved
-        if (existingTicket.status === TicketStatus.RESOLVED) {
+        if (existing.status === TicketStatus.RESOLVED) {
           await prisma.ticket.update({
-            where: { id: existingTicket.id },
+            where: { id: existing.id },
             data: { status: TicketStatus.REOPENED, reopenedCount: { increment: 1 }, resolvedAt: null },
           });
-        } else if (existingTicket.status === TicketStatus.DEPENDENCY_ON_CLIENT) {
-          // If raiser replies to a ticket waiting on client, switch back to OPEN
-          await prisma.ticket.update({
-            where: { id: existingTicket.id },
-            data: { status: TicketStatus.OPEN },
-          });
+        } else if (existing.status === TicketStatus.DEPENDENCY_ON_CLIENT && raiser.id === existing.raisedById) {
+          await prisma.ticket.update({ where: { id: existing.id }, data: { status: TicketStatus.OPEN } });
         }
-
-        await logActivity(raiser.id, 'COMMENT_ADDED', `Replied via email to ${ticketNumber}`, existingTicket.id);
-
-        try {
-          wsService.sendToTicket(existingTicket.id, 'comment:created', comment);
-        } catch (_) {}
-
-        return { action: 'COMMENT_ADDED', ticket: existingTicket };
+        await logActivity(raiser.id, 'COMMENT_ADDED', `Replied via email to ${ticketNumber}`, existing.id);
+        try { wsService.sendToTicket(existing.id, 'comment:created', comment); } catch (_) { /* best effort */ }
+        return { action: 'COMMENT_ADDED', ticket: existing };
       }
     }
 
-    // 3. Route to relevant Department and Team based on recipient email (toEmail) or department supportEmail
-    let department = await prisma.department.findFirst({
-      where: {
-        OR: [
-          { supportEmail: { equals: toEmail, mode: 'insensitive' } },
-          { name: { contains: toEmail.split('@')[0], mode: 'insensitive' } },
-        ],
-      },
+    // New ticket: same path as the web form -> SLA/priority rules, team routing,
+    // round-robin auto-assignment, notifications and the confirmation email to the raiser.
+    const { category, subCategory } = guessCategory(subject, body);
+    const ticket = await ticketService.createTicket({
+      title: subject.slice(0, 250),
+      description: body || 'Ticket raised via email.',
+      category,
+      subCategory: subCategory || null,
+      priority: TicketPriority.MEDIUM,
+      departmentId: department.id,
+      raisedById: raiser.id,
+      tags: ['EMAIL'],
     });
 
-    let team = await prisma.team.findFirst({
-      where: {
-        OR: [
-          { supportEmail: { equals: toEmail, mode: 'insensitive' } },
-          { name: { contains: toEmail.split('@')[0], mode: 'insensitive' } },
-        ],
-      },
-    });
-
-    // Fallback: If no match found, route to IT / Projects department
-    if (!department) {
-      department = await prisma.department.findFirst({
-        where: { OR: [{ type: 'IT' }, { name: { contains: 'IT', mode: 'insensitive' } }, { name: { contains: 'Hardware', mode: 'insensitive' } }] },
-      });
-      if (!department) {
-        department = await prisma.department.findFirst();
-      }
-    }
-
-    if (!team && department) {
-      team = await prisma.team.findFirst({ where: { departmentId: department.id } });
-    }
-
-    // 4. Determine Category & SubCategory from email subject and body
-    let category: TicketCategory = TicketCategory.INCIDENT;
-    let subCategory: string | undefined;
-    let subIssue: string | undefined;
-
-    if (/laptop|desktop|monitor|printer|keyboard|mouse|hardware|ups|cctv|biometric/i.test(subject + body)) {
-      category = TicketCategory.HARDWARE_REQUEST;
-      if (/laptop/i.test(subject + body)) subCategory = 'Laptop';
-      else if (/desktop/i.test(subject + body)) subCategory = 'Desktop';
-      else if (/printer/i.test(subject + body)) subCategory = 'Printer';
-      else if (/network|router|switch|wifi/i.test(subject + body)) subCategory = 'Network Hardware';
-      else subCategory = 'Peripheral';
-    } else if (/software|app|portal|dashboard|outlook|email|exchange|crm|synoriq|clu|bug|error/i.test(subject + body)) {
-      category = TicketCategory.SOFTWARE_REQUEST;
-      if (/outlook|email|exchange/i.test(subject + body)) {
-        subCategory = 'Productivity Software';
-        subIssue = 'Email / Outlook Access / Exchange Connection Issue';
-      }
-    } else if (/access|login|password|permission|id card/i.test(subject + body)) {
-      category = TicketCategory.ACCESS_REQUEST;
-    } else if (/security|firewall|virus|spam/i.test(subject + body)) {
-      category = TicketCategory.SECURITY_INCIDENT;
-    }
-
-    // Find applicable SLA Policy
-    const slaPolicy = await prisma.sLAPolicy.findFirst({
-      where: {
-        ...(department?.id ? { departmentId: department.id } : {}),
-        isActive: true,
-      },
-      orderBy: { resolutionTimeMins: 'asc' },
-    });
-
-    let responseDueAt: Date | undefined;
-    let resolutionDueAt: Date | undefined;
-    if (slaPolicy) {
-      responseDueAt = new Date(Date.now() + slaPolicy.responseTimeMins * 60 * 1000);
-      resolutionDueAt = new Date(Date.now() + slaPolicy.resolutionTimeMins * 60 * 1000);
-    }
-
-    const ticketNumber = await this.generateTicketNumber(department?.id);
-
-    const newTicket = await prisma.ticket.create({
-      data: {
-        ticketNumber,
-        title: subject || 'No Subject (Created via Email)',
-        description: body || 'Ticket raised via email.',
-        status: TicketStatus.OPEN,
-        priority: slaPolicy?.priority || TicketPriority.MEDIUM,
-        category,
-        subCategory,
-        subIssue,
-        group: team ? team.name : 'Inbound Support Queue',
-        departmentId: department?.id || '',
-        teamId: team?.id || undefined,
-        raisedById: raiser.id,
-        slaPolicyId: slaPolicy?.id || undefined,
-        responseDueAt,
-        resolutionDueAt,
-      },
-      include: {
-        department: true,
-        team: true,
-        raisedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
-      },
-    });
-
-    await logActivity(raiser.id, 'TICKET_CREATED', `Raised ticket ${ticketNumber} via email to ${toEmail}`, newTicket.id);
-
-    // Send confirmation email back to raiser
-    try {
-      await emailService.sendTicketCreatedEmail(
-        fromEmail,
-        ticketNumber,
-        subject,
-        config.frontendUrl
-      );
-    } catch (err) {
-      logger.warn('Failed to send email confirmation to raiser', { error: err });
-    }
-
-    // Real-time notification to department staff
-    try {
-      if (department?.id) {
-        wsService.sendToDepartment(department.id, 'ticket:created', newTicket);
-      }
-    } catch (_) {}
-
-    return { action: 'TICKET_CREATED', ticket: newTicket };
+    await logActivity(raiser.id, 'TICKET_CREATED_VIA_EMAIL', `Raised ${ticket.ticketNumber} via email to ${department.supportEmail || toEmail}`, ticket.id);
+    return { action: 'TICKET_CREATED', ticket };
   }
 }
 
-export default new InboundEmailService();
+export const inboundEmailService = new InboundEmailService();
+export default inboundEmailService;

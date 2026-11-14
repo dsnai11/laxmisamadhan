@@ -25,11 +25,11 @@ export const handleInboundEmail = asyncHandler(async (req: Request, res: Respons
     attachments,
   });
 
-  return res.status(200).json({
-    success: true,
-    message: result.action === 'TICKET_CREATED' ? 'Ticket created from inbound email' : 'Comment added from inbound email',
-    data: result,
-  });
+  const message =
+    result.action === 'TICKET_CREATED' ? 'Ticket created from inbound email'
+    : result.action === 'COMMENT_ADDED' ? 'Comment added from inbound email'
+    : `Email not ticketed: ${result.reason}`;
+  return res.status(200).json({ success: result.action !== 'SKIPPED', message, data: result });
 });
 
 /**
@@ -39,7 +39,7 @@ export const syncInboundEmails = asyncHandler(async (req: Request, res: Response
   const result = await mailPollerService.checkInbox();
   res.json({
     success: true,
-    message: `Inbound email sync completed. Processed ${result.processed} new email(s).`,
+    message: `Checked ${result.results.length} department mailbox(es); processed ${result.processed} new email(s).`,
     data: result,
   });
 });
