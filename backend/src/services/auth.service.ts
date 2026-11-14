@@ -402,20 +402,27 @@ class AuthService {
       digitsOnly ? digitsOnly.padStart(5, '0') : '',
     ])).filter(Boolean);
 
-    const user = await prisma.user.findFirst({
+    // Exact matches only. The old `endsWith` fallback let a partial number such as
+    // "87" match dozens of employees and emailed a reset link to an arbitrary one.
+    const matches = await prisma.user.findMany({
       where: {
         OR: [
           { employeeId: { in: candidates, mode: 'insensitive' } },
           { email: { equals: normalized.toLowerCase(), mode: 'insensitive' } },
-          ...(digitsOnly ? [{ employeeId: { endsWith: digitsOnly } }] : []),
         ],
       },
+      take: 2,
     });
 
-    if (!user) {
-      logger.warn('Password reset requested for non-existent account', { identifier: normalized });
+    if (matches.length === 0) {
+      logger.warn('Password reset requested for non-existent account', { identifier: maskIdentifier(normalized) });
       return;
     }
+    if (matches.length > 1) {
+      logger.warn('Password reset identifier matched multiple accounts; no email sent', { identifier: maskIdentifier(normalized) });
+      return;
+    }
+    const user = matches[0];
 
     const resetToken = generateToken(32);
     const resetTokenHash = await hashPassword(resetToken);
