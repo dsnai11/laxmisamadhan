@@ -17,8 +17,18 @@ export default function AssignedAgentTopTile({ ticket }: AssignedAgentTopTilePro
   ]));
   const isAgentOrStaff = userRoles.some((r) => ['AGENT', 'TEAM_LEAD'].includes(r)) || user?.id === ticket?.assignedToId;
 
-  // Locate assigner from ticket.assignedBy or audit updates
-  const assignUpdate = (ticket?.updates || []).find((u: any) => u.field === 'assignedTo' && u.user);
+  // Locate assigner from ticket.assignedBy, else the latest *manual* assignment in history.
+  // System auto-assignments are stored with isSystem=true and the assignee's own id as the
+  // row's user (the column is required), so they must be skipped — otherwise the banner says
+  // the agent assigned the ticket to himself (or, on older rows, that the raiser did).
+  const assignUpdate = (ticket?.updates || []).find(
+    (u: any) =>
+      u.field === 'assignedTo' &&
+      u.user &&
+      !u.isSystem &&
+      u.user.id !== ticket?.assignedToId &&
+      u.user.id !== ticket?.raisedById
+  );
   const assigner = ticket?.assignedBy || assignUpdate?.user;
 
   const copyToClipboard = (text: string, label: string) => {
