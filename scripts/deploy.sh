@@ -39,7 +39,8 @@ ok()   { echo "${c_grn}✔${c_off} $*"; }
 warn() { echo "${c_ylw}!${c_off} $*"; }
 die()  { echo "${c_red}✘ $*${c_off}" >&2; exit 1; }
 
-remote() { ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" "$@"; }
+# -n: never read local stdin (otherwise ssh swallows input inside `while read` loops).
+remote() { ssh -n "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" "$@"; }
 ts() { date +%Y%m%d_%H%M%S; }
 
 # Hash a file with CRLF normalised, so Windows-era copies compare equal to git.
