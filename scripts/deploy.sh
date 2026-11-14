@@ -109,7 +109,7 @@ prune_backups() {
 wait_healthy() {
   local i
   for i in $(seq 1 30); do
-    if remote "curl -fsS --max-time 3 http://127.0.0.1:3001/health >/dev/null"; then return 0; fi
+    if remote "curl -fs --max-time 3 http://127.0.0.1:3001/health >/dev/null"; then return 0; fi
     sleep 2
   done
   return 1
