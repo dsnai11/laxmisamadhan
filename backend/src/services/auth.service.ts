@@ -444,16 +444,16 @@ class AuthService {
     });
 
     if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
-      throw new Error('Invalid or expired reset token');
+      throw new AppError('This reset link is invalid or has already been used. Please request a new one.', 400, 'INVALID_RESET_TOKEN');
     }
 
     if (user.passwordResetExpires < new Date()) {
-      throw new Error('Reset token has expired');
+      throw new AppError('This reset link has expired. Please request a new one.', 400, 'RESET_TOKEN_EXPIRED');
     }
 
     const isValid = await verifyPassword(token, user.passwordResetToken);
     if (!isValid) {
-      throw new Error('Invalid reset token');
+      throw new AppError('This reset link is invalid or has already been used. Please request a new one.', 400, 'INVALID_RESET_TOKEN');
     }
 
     const newPasswordHash = await hashPassword(newPassword);

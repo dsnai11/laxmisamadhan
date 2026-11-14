@@ -251,7 +251,7 @@ deploy_frontend() {
 
   local stamp; stamp="$(ts)"
   local tarball="/tmp/laxmi_dist_${stamp}.tar.gz"
-  COPYFILE_DISABLE=1 tar -czf "$tarball" -C dist .
+  COPYFILE_DISABLE=1 tar --no-xattrs -czf "$tarball" -C dist .
   info "Uploading build ..."
   scp -q "${SSH_OPTS[@]}" "$tarball" "$EC2_USER@$EC2_HOST:/tmp/dist_${stamp}.tar.gz"
   rm -f "$tarball"
