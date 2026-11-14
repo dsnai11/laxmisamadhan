@@ -84,7 +84,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/version', (req, res) => {
-  res.json({ version: '1.0.0', name: 'Ticket Portal API' });
+  res.json({ version: '1.0.0', name: 'Laxmi Samadhan API' });
 });
 
 const apiPrefix = config.apiPrefix;

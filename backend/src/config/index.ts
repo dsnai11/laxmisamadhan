@@ -43,7 +43,7 @@ export const config = {
   },
 
   mfa: {
-    issuer: process.env.MFA_ISSUER || 'TicketPortal',
+    issuer: process.env.MFA_ISSUER || 'Laxmi Samadhan',
   },
 
   upload: {

@@ -91,7 +91,7 @@ export default function AdminSettings() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" subtitle="Configure your ticket portal" actions={<button className="btn-primary" onClick={openNew}>New field</button>} />
+      <PageHeader title="Settings" subtitle="Configure the Laxmi Samadhan service desk" actions={<button className="btn-primary" onClick={openNew}>New field</button>} />
 
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

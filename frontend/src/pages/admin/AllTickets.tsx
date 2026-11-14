@@ -181,7 +181,7 @@ export default function AdminAllTickets() {
       {/* Top Header & Breadcrumb */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">Aavas Support Service Desk</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">Laxmi India Finance Service Desk</h1>
           <p className="text-xs text-gray-500">Manage, assign, and track IT support tickets</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
