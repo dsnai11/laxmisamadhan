@@ -43,8 +43,15 @@ class EscalationService {
       const createdAtMs = ticket.createdAt.getTime();
       const ageMinutes = (now - createdAtMs) / (60 * 1000);
 
-      // Level 1 Escalation: Unassigned Ticket Timeout (> 30 Mins)
-      if (!ticket.assignedToId && ticket.status === TicketStatus.OPEN && ageMinutes >= 30) {
+      // Level 1 Escalation: Unassigned Ticket Timeout (> 30 Mins).
+      // Fires once per ticket: the ESCALATED_L1 tag marks it as done so the
+      // 10-minute job doesn't re-notify the department head on every run.
+      if (
+        !ticket.assignedToId &&
+        ticket.status === TicketStatus.OPEN &&
+        ageMinutes >= 30 &&
+        !ticket.tags.includes('ESCALATED_L1')
+      ) {
         // Tag ticket as ESCALATED_L1 and notify Dept Head
         await prisma.ticket.update({
           where: { id: ticket.id },
@@ -70,8 +77,13 @@ class EscalationService {
         result.details.push(`Ticket ${ticket.ticketNumber} L1 escalated (Unassigned for ${Math.round(ageMinutes)}m)`);
       }
 
-      // Level 2 Escalation: Approaching SLA Breach (< 30 mins remaining) -> Upgrade Priority
-      if (ticket.resolutionDueAt && ticket.slaStatus === SLAStatus.APPROACHING_BREACH) {
+      // Level 2 Escalation: Approaching SLA Breach -> Upgrade Priority by one step, once.
+      // Without the ESCALATED_L2 guard each run bumped it again (LOW -> CRITICAL in 30 min).
+      if (
+        ticket.resolutionDueAt &&
+        ticket.slaStatus === SLAStatus.APPROACHING_BREACH &&
+        !ticket.tags.includes('ESCALATED_L2')
+      ) {
         let newPriority = ticket.priority;
         if (ticket.priority === TicketPriority.LOW) newPriority = TicketPriority.MEDIUM;
         else if (ticket.priority === TicketPriority.MEDIUM) newPriority = TicketPriority.HIGH;
