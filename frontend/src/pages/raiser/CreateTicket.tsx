@@ -125,13 +125,17 @@ export default function CreateTicket() {
       } as any);
 
       const failed: string[] = [];
-      for (const file of files) {
+      const toastId = 'attachment-upload';
+      for (const [i, file] of files.entries()) {
         try {
-          await api.uploadAttachment(ticket.id, file);
+          await api.uploadAttachment(ticket.id, file, (percent, name) => {
+            toast.loading(`Uploading ${name}${files.length > 1 ? ` (${i + 1} of ${files.length})` : ''}… ${percent}%`, { id: toastId });
+          });
         } catch {
           failed.push(file.name);
         }
       }
+      toast.dismiss(toastId);
 
       toast.success(`Ticket ${ticket.ticketNumber} created successfully!`);
       if (failed.length) toast.error(`Could not upload: ${failed.join(', ')}.`);

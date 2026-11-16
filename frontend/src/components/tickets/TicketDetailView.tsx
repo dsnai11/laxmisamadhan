@@ -73,6 +73,7 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
   const [comment, setComment] = useState('');
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [upload, setUpload] = useState<{ name: string; percent: number; index: number; total: number } | null>(null);
   const [nextStatus, setNextStatus] = useState('');
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolution, setResolution] = useState('');
@@ -226,10 +227,20 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
 
   const onUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      await run('upload', () => api.uploadAttachment(ticket.id, file), `${file.name} uploaded`);
+    const list = Array.from(files);
+    try {
+      for (const [i, file] of list.entries()) {
+        setUpload({ name: file.name, percent: 0, index: i + 1, total: list.length });
+        await run(
+          'upload',
+          () => api.uploadAttachment(ticket.id, file, (percent, name) => setUpload({ name, percent, index: i + 1, total: list.length })),
+          `${file.name} uploaded`
+        );
+      }
+    } finally {
+      setUpload(null);
+      if (fileInput.current) fileInput.current.value = '';
     }
-    if (fileInput.current) fileInput.current.value = '';
   };
 
   const onDownload = async (a: any) => {
@@ -309,10 +320,23 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
               <div>
                 <input ref={fileInput} type="file" multiple hidden onChange={(e) => onUpload(e.target.files)} />
                 <button className="btn-secondary btn-sm w-full sm:w-auto" disabled={busy === 'upload'} onClick={() => fileInput.current?.click()}>
-                  {busy === 'upload' ? 'Uploading...' : 'Add file'}
+                  {busy === 'upload' ? (upload ? `Uploading ${upload.percent}%` : 'Uploading...') : 'Add file'}
                 </button>
               </div>
             </div>
+            {upload && (
+              <div className="px-4 py-3 border-b border-gray-100" role="status" aria-live="polite">
+                <div className="flex justify-between gap-3 text-xs text-gray-600 mb-1.5">
+                  <span className="truncate">
+                    Uploading {upload.name}{upload.total > 1 ? ` (${upload.index} of ${upload.total})` : ''}
+                  </span>
+                  <span className="font-medium tabular-nums">{upload.percent}%</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                  <div className="h-full bg-primary-600 transition-all duration-300" style={{ width: `${upload.percent}%` }} />
+                </div>
+              </div>
+            )}
             {attachments.length === 0 ? (
               <p className="p-4 text-sm text-gray-500">No attachments.</p>
             ) : (

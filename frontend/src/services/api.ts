@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { uploadSizeError } from '@utils/upload';
+import { shrinkImageForUpload } from '@utils/imageCompress';
 import { TokenPair, ApiResponse, LoginCredentials, RegisterData, User, Ticket, Department, Team, SLAPolicy, Asset, KnowledgeBase, KnowledgeArticle, CustomField, Approval, Notification, PaginatedResponse } from '@types';
 import { Capacitor } from '@capacitor/core';
 
@@ -377,14 +378,25 @@ class ApiService {
     await this.client.delete(`/tickets/${id}`);
   }
 
-  async uploadAttachment(ticketId: string, file: File): Promise<any> {
-    const sizeError = uploadSizeError(file);
+  /**
+   * Upload one attachment. Large photos are shrunk in the browser first (shrinkImageForUpload),
+   * the 25 MB limit is checked on the result, and onProgress reports 0–100 while it uploads.
+   */
+  async uploadAttachment(ticketId: string, file: File, onProgress?: (percent: number, uploadName: string) => void): Promise<any> {
+    const toSend = await shrinkImageForUpload(file);
+    const sizeError = uploadSizeError(toSend);
     if (sizeError) throw new Error(sizeError);
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', toSend);
+    onProgress?.(0, toSend.name);
     const response = await this.client.post<ApiResponse<any>>(`/tickets/${ticketId}/attachments`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0, // slow mobile uploads must not be cut off
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)), toSend.name);
+      },
     });
+    onProgress?.(100, toSend.name);
     return response.data.data!;
   }
 
