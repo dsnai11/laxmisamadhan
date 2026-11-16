@@ -503,7 +503,8 @@ class TicketService {
         assignedById: actualAssignedById,
         teamId,
         assignedAt: new Date(),
-        respondedAt: ticket.respondedAt ?? new Date(),
+        // Assigning is not a response: respondedAt is set by the first public staff reply or
+        // a staff status change, so the response SLA measures a real reply.
         updates: {
           create: {
             field: 'assignedTo',

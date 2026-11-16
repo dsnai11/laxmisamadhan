@@ -24,6 +24,51 @@ interface SLAPolicyData {
   escalationRules?: any[];
 }
 
+const ACTIVE_STATUSES = ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] as const;
+
+/*
+ * SLA breach rules (unit-tested in src/__tests__/sla_breach_rules.test.ts):
+ *  - the RESPONSE deadline only counts while nobody has responded (respondedAt is null);
+ *  - the RESOLUTION deadline counts until the ticket is resolved.
+ * Previously a passed response deadline breached every ticket ~4h after creation even when it
+ * had been responded to, which then triggered escalations to team leads / department heads.
+ */
+export function slaApproachingWhere(now: Date): Prisma.TicketWhereInput {
+  return {
+    slaStatus: 'WITHIN_SLA',
+    status: { in: [...ACTIVE_STATUSES] },
+    OR: [
+      { respondedAt: null, responseDueAt: { lte: addMinutes(now, 30), gt: now } },
+      { resolutionDueAt: { lte: addMinutes(now, 60), gt: now } },
+    ],
+  };
+}
+
+export function slaBreachedWhere(now: Date): Prisma.TicketWhereInput {
+  return {
+    slaStatus: { in: ['WITHIN_SLA', 'APPROACHING_BREACH'] },
+    status: { in: [...ACTIVE_STATUSES] },
+    OR: [
+      { respondedAt: null, responseDueAt: { lt: now } },
+      { resolutionDueAt: { lt: now } },
+    ],
+  };
+}
+
+/** SLA state of one ticket at a point in time, using the same rules as the queries above. */
+export function slaStateAt(
+  t: { respondedAt: Date | null; responseDueAt: Date | null; resolutionDueAt: Date | null },
+  now: Date
+): 'WITHIN_SLA' | 'APPROACHING_BREACH' | 'BREACHED' {
+  const responsePending = !t.respondedAt && !!t.responseDueAt;
+  if ((responsePending && t.responseDueAt! < now) || (t.resolutionDueAt && t.resolutionDueAt < now)) return 'BREACHED';
+  if (
+    (responsePending && t.responseDueAt! <= addMinutes(now, 30)) ||
+    (t.resolutionDueAt && t.resolutionDueAt <= addMinutes(now, 60))
+  ) return 'APPROACHING_BREACH';
+  return 'WITHIN_SLA';
+}
+
 class SLAService {
   async createPolicy(data: SLAPolicyData, createdById: string): Promise<any> {
     const policy = await prisma.sLAPolicy.create({
@@ -135,14 +180,7 @@ class SLAService {
     const now = new Date();
     
     const approachingBreach = await prisma.ticket.findMany({
-      where: {
-        slaStatus: 'WITHIN_SLA',
-        OR: [
-          { responseDueAt: { lte: addMinutes(now, 30), gt: now } },
-          { resolutionDueAt: { lte: addMinutes(now, 60), gt: now } },
-        ],
-        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] },
-      },
+      where: slaApproachingWhere(now),
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
 
@@ -151,14 +189,7 @@ class SLAService {
     }
 
     const breached = await prisma.ticket.findMany({
-      where: {
-        slaStatus: { in: ['WITHIN_SLA', 'APPROACHING_BREACH'] },
-        OR: [
-          { responseDueAt: { lt: now } },
-          { resolutionDueAt: { lt: now } },
-        ],
-        status: { in: ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] },
-      },
+      where: slaBreachedWhere(now),
       include: { assignedTo: true, raisedBy: true, department: true, slaPolicy: true },
     });
 

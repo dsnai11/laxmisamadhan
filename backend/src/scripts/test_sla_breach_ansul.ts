@@ -1,8 +1,17 @@
+import 'dotenv/config';
 import { prisma } from '../config/prisma';
 import escalationService from '../services/escalation.service';
 import { TicketStatus, TicketPriority, TicketCategory, SLAStatus } from '@prisma/client';
 
 async function runTest() {
+  // This script creates a ticket and runs the escalation job twice back-to-back. The job acts on
+  // EVERY breached ticket, so on 2026-11-13 running it on production escalated five real tickets
+  // Agent -> Team Lead -> Department Head in one second. Never run it against production.
+  if ((process.env.NODE_ENV || '').toLowerCase() === 'production' || /lifc\.in/i.test(process.env.FRONTEND_URL || '')) {
+    console.error('Refusing to run: this test script modifies real tickets. Use a local/test database.');
+    process.exit(1);
+  }
+
   console.log('--- 1. Setting Department Heads ---');
   await prisma.department.updateMany({
     where: { name: { contains: 'Application', mode: 'insensitive' } },
