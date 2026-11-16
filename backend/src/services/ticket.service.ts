@@ -17,6 +17,21 @@ const STAFF_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD', 'AG
 const DEPT_SCOPED_ROLES = ['DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'];
 const TICKET_PREFIXES: Record<string, string> = { IT_HARDWARE: 'HW', IT_SOFTWARE: 'SW', DIGITAL_SECURITY: 'SEC', AI: 'AI' };
 
+/** "TKT-26" + 74 -> "TKT-26-00074" */
+export function formatTicketNumber(key: string, seq: number): string {
+  return `${key}-${String(seq).padStart(5, '0')}`;
+}
+
+/** Highest sequence for a prefix+year key found anywhere in the given texts (ticket numbers, log lines). */
+export function highestTicketSequence(texts: string[], key: string): number {
+  const re = new RegExp(`\\b${key.replace(/[-]/g, '\\-')}-(\\d{4,6})\\b`, 'g');
+  let max = 0;
+  for (const t of texts) {
+    for (const m of (t || '').matchAll(re)) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max;
+}
+
 const fireAndForget = (p: Promise<unknown>) => { p.catch((e) => logger.error('Background task failed', { error: e instanceof Error ? e.message : String(e) })); };
 
 interface CreateTicketData {
@@ -1203,20 +1218,40 @@ class TicketService {
     return transitions[currentStatus] || [TicketStatus.OPEN, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR, TicketStatus.RESOLVED, TicketStatus.REOPENED];
   }
 
+  /**
+   * Next ticket number, e.g. TKT-26-00074. Numbers are NEVER reused: a per prefix+year counter
+   * (TicketSequence) only goes up. It starts from the highest number ever issued — live tickets
+   * plus the activity log, which still names deleted tickets. Previously the number was
+   * "count of tickets + 1", so deleting tickets handed their numbers to new tickets.
+   */
   private async generateTicketNumber(departmentId: string): Promise<string> {
     const department = await prisma.department.findUnique({ where: { id: departmentId } });
     const prefix = (department && TICKET_PREFIXES[department.type]) || 'TKT';
     const year = new Date().getFullYear().toString().slice(-2);
-    const count = await prisma.ticket.count({
-      where: { departmentId, createdAt: { gte: new Date(new Date().getFullYear(), 0, 1) } },
-    });
-    let seq = count + 1;
-    let ticketNumber = `${prefix}-${year}-${String(seq).padStart(5, '0')}`;
-    while (await prisma.ticket.findUnique({ where: { ticketNumber }, select: { id: true } })) {
-      seq++;
-      ticketNumber = `${prefix}-${year}-${String(seq).padStart(5, '0')}`;
+    const key = `${prefix}-${year}`;
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      let seq: number;
+      const existing = await prisma.ticketSequence.findUnique({ where: { key } });
+      if (existing) {
+        seq = (await prisma.ticketSequence.update({ where: { key }, data: { lastValue: { increment: 1 } } })).lastValue;
+      } else {
+        const [tickets, logs] = await Promise.all([
+          prisma.ticket.findMany({ where: { ticketNumber: { startsWith: `${key}-` } }, select: { ticketNumber: true } }),
+          prisma.activityLog.findMany({ where: { description: { contains: `${key}-` } }, select: { description: true } }),
+        ]);
+        seq = highestTicketSequence([...tickets.map((t) => t.ticketNumber), ...logs.map((l) => l.description)], key) + 1;
+        try {
+          await prisma.ticketSequence.create({ data: { key, lastValue: seq } });
+        } catch (err: any) {
+          if (err?.code === 'P2002') continue; // another request created it first — retry via increment
+          throw err;
+        }
+      }
+      const ticketNumber = formatTicketNumber(key, seq);
+      if (!(await prisma.ticket.findUnique({ where: { ticketNumber }, select: { id: true } }))) return ticketNumber;
     }
-    return ticketNumber;
+    throw new Error('Could not allocate a ticket number');
   }
 
   private async getApplicableSLAPolicy(

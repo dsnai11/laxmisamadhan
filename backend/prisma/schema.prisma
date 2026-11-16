@@ -684,3 +684,10 @@ model AuditLog {
   @@index([resourceId])
   @@index([createdAt])
 }
+// Monotonic ticket-number counter per prefix+year (e.g. "TKT-26"). Numbers are never reused,
+// even after tickets are deleted. See generateTicketNumber in ticket.service.ts.
+model TicketSequence {
+  key       String   @id
+  lastValue Int
+  updatedAt DateTime @updatedAt
+}
