@@ -1,4 +1,5 @@
 import { ReactNode, useEffect } from 'react';
+import { TOO_LARGE_MESSAGE } from '@utils/upload';
 import { cn, getStatusColor, getPriorityColor, getSLABadgeColor, humanize } from '@utils/helpers';
 
 export function Spinner({ className }: { className?: string }) {
@@ -59,6 +60,7 @@ export function getErrorMessage(error: unknown): string {
   if (Array.isArray(details) && details.length) {
     return details.map((d: any) => (d.field ? `${d.field}: ${d.message}` : d.message)).join('; ');
   }
+  if (e?.response?.status === 413) return TOO_LARGE_MESSAGE; // nginx body-size limit (no JSON body)
   return e?.response?.data?.error || e?.message || 'Unexpected error';
 }
 

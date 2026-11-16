@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { uploadSizeError } from '@utils/upload';
 import { TokenPair, ApiResponse, LoginCredentials, RegisterData, User, Ticket, Department, Team, SLAPolicy, Asset, KnowledgeBase, KnowledgeArticle, CustomField, Approval, Notification, PaginatedResponse } from '@types';
 import { Capacitor } from '@capacitor/core';
 
@@ -377,6 +378,8 @@ class ApiService {
   }
 
   async uploadAttachment(ticketId: string, file: File): Promise<any> {
+    const sizeError = uploadSizeError(file);
+    if (sizeError) throw new Error(sizeError);
     const formData = new FormData();
     formData.append('file', file);
     const response = await this.client.post<ApiResponse<any>>(`/tickets/${ticketId}/attachments`, formData, {
@@ -890,4 +893,4 @@ class ApiService {
 }
 
 export const api = new ApiService();
-export default api;
+export default api;

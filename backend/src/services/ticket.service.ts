@@ -815,15 +815,23 @@ class TicketService {
   }
 
   async addAttachment(ticketId: string, userId: string, userRole: UserRole, file: Express.Multer.File): Promise<any> {
+    const tempPath = file.path;
+    if (!tempPath) {
+      throw new Error('Uploaded file could not be processed');
+    }
+    try {
+      return await this.storeAttachment(ticketId, userId, userRole, file, tempPath);
+    } finally {
+      // Whatever happened (rejected type, access denied, DB error), never leave the temp file behind.
+      await fs.promises.unlink(tempPath).catch(() => undefined);
+    }
+  }
+
+  private async storeAttachment(ticketId: string, userId: string, userRole: UserRole, file: Express.Multer.File, tempPath: string): Promise<any> {
     const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, include: { department: true, watchers: true } });
     if (!ticket) throw new Error('Ticket not found');
     if (!this.canAccessTicket(ticket, userId, userRole, await this.getUserDepartmentId(userId))) {
       throw new Error('Access denied');
-    }
-
-    const tempPath = file.path;
-    if (!tempPath) {
-      throw new Error('Uploaded file could not be processed');
     }
 
     const detected = await this.inspectUploadedFile(tempPath, file.size, file.originalname);
@@ -839,7 +847,12 @@ class TicketService {
     const fileName = `${crypto.randomUUID()}${ext}`;
     const fullPath = path.join(dir, fileName);
     const checksum = await this.hashFile(tempPath);
-    await fs.promises.rename(tempPath, fullPath);
+    try {
+      await fs.promises.rename(tempPath, fullPath);
+    } catch (err: any) {
+      if (err?.code !== 'EXDEV') throw err; // temp dir on another filesystem: copy instead
+      await fs.promises.copyFile(tempPath, fullPath);
+    }
 
     const attachment = await prisma.attachment.create({
       data: {

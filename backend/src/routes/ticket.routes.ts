@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 import config from '@config/index';
 import { authenticate, requireRole } from '@middleware/auth.middleware';
 import { validateBody, validateQuery, validateParams } from '@middleware/validation.middleware';
@@ -36,8 +39,18 @@ const DEFAULT_ALLOWED_MIME_TYPES = [
 const configuredTypes = config.upload.allowedTypes.filter(Boolean);
 const allowedMimeTypes = configuredTypes.length > 0 ? configuredTypes : DEFAULT_ALLOWED_MIME_TYPES;
 
+// Uploads are streamed to a temp file on disk: TicketService.addAttachment reads file.path to
+// sniff the real file type and hash it, then moves it into uploads/tickets/<id>/. (Memory
+// storage has no file.path, which made every upload fail from 13 Nov until this fix.)
+// The temp folder sits NEXT TO uploads/, not inside it, so nginx never serves half-checked files.
+export const UPLOAD_TMP_DIR = path.resolve(config.upload.dir, '..', 'upload-tmp');
+fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: UPLOAD_TMP_DIR,
+    filename: (_req, _file, cb) => cb(null, crypto.randomUUID()),
+  }),
   limits: { fileSize: config.upload.maxSize, files: 1 },
   fileFilter: (_req, file, cb) => {
     const mime = file.mimetype.toLowerCase().split(';')[0].trim();

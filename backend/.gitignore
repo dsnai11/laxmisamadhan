@@ -12,3 +12,6 @@ node_modules/
 dist/
 logs/
 *.log
+
+# multer temp uploads (see routes/ticket.routes.ts)
+upload-tmp/

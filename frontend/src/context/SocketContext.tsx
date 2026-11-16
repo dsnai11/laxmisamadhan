@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { resolveSocketUrl } from '@utils/socketUrl';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { Notification, Ticket, Comment, Approval } from '@types';
@@ -24,23 +25,17 @@ interface SocketContextType {
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
-const getWsUrl = (): string => {
-  const envWs = import.meta.env.VITE_WS_URL;
-  if (envWs && (envWs.startsWith('http://') || envWs.startsWith('https://') || envWs.startsWith('ws://') || envWs.startsWith('wss://'))) {
-    return envWs;
-  }
-  if (
-    Capacitor.isNativePlatform() ||
-    (typeof window !== 'undefined' && (
-      window.location.protocol === 'capacitor:' ||
-      window.location.protocol === 'ionic:' ||
-      (window.location.hostname === 'localhost' && ((window as any).Capacitor || window.location.origin.includes('capacitor')))
-    ))
-  ) {
-    return 'https://laxmisamadhan.lifc.in';
-  }
-  return envWs || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://localhost:3001');
-};
+const getWsUrl = (): string =>
+  resolveSocketUrl({
+    envWs: import.meta.env.VITE_WS_URL,
+    isNative:
+      Capacitor.isNativePlatform() ||
+      (typeof window !== 'undefined' &&
+        (window.location.protocol === 'capacitor:' ||
+          window.location.protocol === 'ionic:' ||
+          (window.location.hostname === 'localhost' && (!!(window as any).Capacitor || window.location.origin.includes('capacitor'))))),
+    origin: typeof window !== 'undefined' ? window.location.origin : undefined,
+  });
 
 const WS_URL = getWsUrl();
 
