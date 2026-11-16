@@ -1,6 +1,6 @@
 # Laxmi Samadhan — Handover Guide
 
-Written 2026-11-16. For any developer, or any AI assistant/model (Claude, ChatGPT, Gemini, Copilot…), picking this project up.
+Written 2026-11-16, last updated 2026-11-16 (evening). For any developer, or any AI assistant/model (Claude, ChatGPT, Gemini, Copilot…), picking this project up.
 **This is a LIVE production system** (https://laxmisamadhan.lifc.in). Read "Golden rules" first.
 
 ---
@@ -9,9 +9,9 @@ Written 2026-11-16. For any developer, or any AI assistant/model (Claude, ChatGP
 
 An enterprise IT ticketing portal ("IT Ticketing Portal – Enterprise Edition") for LIFC.
 
-- Departments: IT Hardware, IT Software, Digital Security, AI
+- Departments on production: **IT Application**, **IT Hardware/Software**, **Digital Security and AI** (seed data uses IT Hardware / IT Software / Digital Security / AI)
 - Roles: Super Admin, Admin, Dept Head, Team Lead, Agent, Raiser, Viewer
-- Features: tickets + SLA tracking/escalation, approvals, knowledge base, assets, custom fields, reports, MFA, WebSocket notifications, email-to-ticket (IMAP inbound, per-department mailboxes), mobile apps (Capacitor Android/iOS)
+- Features: tickets + SLA tracking/escalation, approvals, knowledge base, assets, custom fields, reports, MFA, WebSocket live updates, email-to-ticket (one IMAP mailbox per department), resolver credit, image shrinking + upload progress, mobile apps (Capacitor Android/iOS)
 
 | Part | Tech | Folder |
 |------|------|--------|
@@ -32,6 +32,9 @@ Repo: https://github.com/dsnai11/laxmisamadhan (branch `main`).
 4. **The real deploy tool is `scripts/deploy.sh`**, not the GitHub Action (see §6).
 5. **Don't change `prisma/schema.prisma` casually.** There are no migrations; the DB is synced with `prisma db push`. Schema changes need an explicit backup + `--apply-schema` (§6).
 6. Ask the owner before: pushing, deploying, rotating keys, changing DNS/nginx, touching the database.
+7. **Never run `backend/src/scripts/*` against production.** On 2026-11-13 a test script (`test_sla_breach_ansul.ts`) ran the escalation job twice on the live DB and pushed five real tickets Agent → Team Lead → Dept Head in one second. That script now refuses to run in production; treat every other script the same way.
+8. **Every bug fix gets a regression test** that fails on the old behaviour. Several bugs here came back because a fix only patched one screen. Put the rule in a small tested function (see §5a) and use it everywhere.
+9. **Others push to `main` too.** Always `git pull --rebase` before pushing; never `--force`.
 
 ---
 
@@ -99,6 +102,13 @@ The live API allows `http://localhost:5173` via CORS. Everything you do there ch
 | SSH to EC2 times out from office Wi-Fi | Port 22 is blocked on the office network | Use a mobile hotspot |
 | Android CI build fails | Needs secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Add them in GitHub → Settings → Secrets → Actions |
 | Backend `tsc` shows ~14 errors | Pre-existing; production runs via `tsx` (no type-check) | Deploy script only blocks if the count goes **above** `TSC_BASELINE` in `scripts/deploy.sh`; lower it as errors are fixed |
+| SSH works on the hotspot but sometimes times out | The mobile network occasionally routes via a path that blocks port 22 (public IP changes) | Wait ~20 s and retry; check `curl https://api.ipify.org` |
+| Live updates (WebSocket) error "timeout" in the browser console | Production port 3001 is **not** reachable from outside | Web builds must connect to the site origin (`/socket.io/` is proxied by nginx). Don't set `VITE_WS_URL` to `:3001` for production builds; `scripts/deploy.sh` builds without it on purpose. Rule: `frontend/src/utils/socketUrl.ts` |
+| Attachment upload fails with 413 | nginx `client_max_body_size 25M` | The browser now blocks >25 MB with a clear message (`frontend/src/utils/upload.ts`). Raise both nginx and `MAX_FILE_SIZE` together if the limit must change |
+| Attachment upload fails with "Uploaded file could not be processed" | Upload route and `addAttachment` disagreeing on memory vs disk storage (happened 13–16 Nov) | Uploads stream to `backend/upload-tmp/` (outside the public `uploads/`), then get type-checked and moved. A test fails if the route goes back to memory storage |
+| WebP images rejected | Production `ALLOWED_MIME_TYPES` doesn't include `image/webp` | The browser shrinks large images to **JPEG**. Add `image/webp` to the server env if WebP must be accepted |
+| Users still see an old version after a frontend deploy | Browsers cached `index.html` | nginx now sends `Cache-Control: no-cache` for `index.html` (`expires -1` in `location /`). Hashed `/assets/` keep long caching |
+| An old reset-password link opens the login page | That URL was cached before the no-cache fix | Reset emails link to `/reset-password?v=2#token=…`; just request a new link |
 
 ---
 
@@ -119,6 +129,27 @@ git push origin <branch>                # then open a PR, or push main if the ow
 ```
 Commit style used in history: `feat(...)`, `fix(...)`, `chore(...)`, `test:`.
 Always `git status` before committing — confirm no `.env`, `.pem`, `node_modules`, logs.
+
+---
+
+## 5a. Business rules (each one is locked in by unit tests)
+
+Change these only in the listed place, and update its tests in the same commit.
+
+| Rule | Where | Tests |
+|------|-------|-------|
+| **Who is shown on a ticket.** Agents/team leads/assignee see the **raiser** on the top card; the raiser sees the **assigned agent**. Auto-assignments are never shown as "assigned by" the raiser or the agent. Resolved tickets show "Resolved by X · previously assigned to Y". | `frontend/src/utils/ticketContacts.ts` | `ticketContacts.test.ts` |
+| **Auto-assignments are recorded as system actions** (`assignedById = null`, history `isSystem = true`). | `resolveAssignmentActor()` in `ticket.service.ts` | `assignment_actor.test.ts` |
+| **Resolver credit.** Whoever resolves a ticket is stored as `resolvedById`. If that's a staff member other than the assignee (e.g. a teammate covering from the team bucket), the ticket is **reassigned to the resolver** and the old assignee is notified. Reopening clears `resolvedById`. Reports count resolved tickets for `resolvedById` (falling back to the assignee for old tickets). | `resolutionCredit()` in `ticket.service.ts`; `creditedResolverId()` in `report.service.ts` | `resolution_credit.test.ts` |
+| **SLA breach.** The response deadline counts only while nobody has responded; after that only the resolution deadline counts. Assigning a ticket is **not** a response (the first public staff reply or staff status change is). | `slaBreachedWhere` / `slaStateAt` in `sla.service.ts` | `sla_breach_rules.test.ts` |
+| **Escalation.** Runs every 10 min. L1 (unassigned > 30 min) notifies the dept head **once**; L2 (approaching breach) bumps priority **once**; on breach: Agent → **team lead** (the `leadId` on the agent's team) → dept head. Tags like `ESCALATED_L1` mark a step as done. | `escalation.service.ts` | `escalation_repeat.test.ts` |
+| **Ticket numbers are never reused.** One counter per prefix+year in the `TicketSequence` table, which only goes up. It started after the highest number ever issued (including deleted tickets, found in the activity log). | `generateTicketNumber()` in `ticket.service.ts` | `ticket_numbering.test.ts` |
+| **Login & forgot password by employee code** (e.g. `1234`, `LIF1234`, `01234`, or the email). Exact matches only, and only when **exactly one** account matches. No "ends with" matching. | `findUserByIdentifier()` in `auth.service.ts` | `forgot_password_lookup.test.ts` |
+| **Email-to-ticket.** Each department has its own mailbox (its *Inbound Support Email*). Every minute the server reads mail newer than its saved UID (read/unread flags are ignored). First run only records a baseline, so old mail is never ticketed. Skips bounces/auto-replies, the system's own addresses and non-company domains. Tickets go through the normal `createTicket` path (SLA, team routing, auto-assign). A reply quoting a ticket number becomes a comment only if the sender is involved (raiser, assignee, watcher or staff). | `inboundRules.ts`, `inboundEmail.service.ts`, `mailPoller.service.ts` | `inbound_email.test.ts` |
+| **Attachments.** Large photos (>1 MB or >2560 px) are resized in the browser to 1920 px JPEG before upload. The 25 MB limit is checked after shrinking. Progress is shown. | `frontend/src/utils/imageCompress.ts`, `upload.ts` | `imageCompress.test.ts`, `upload.test.ts`, `attachment_upload.test.ts` |
+| **Branding.** Only Laxmi India Finance / Laxmi Samadhan. A test fails if another company's name or template placeholders ("Aavas", "TicketPortal", "Acme"…) appear in app code. | — | `frontend/src/branding.test.ts` |
+
+`scripts/deploy.sh` and the GitHub **Tests** workflow (`.github/workflows/test.yml`) run all of these. Don't deploy on a red test.
 
 ---
 
@@ -146,7 +177,14 @@ Schema change? It stops and requires `--apply-schema`, which takes a `pg_dump` f
 It SSHes in only if secret `EC2_SSH_KEY` exists (optional `EC2_HOST`, `EC2_USER`). Because the server folder is not a git repo, its `git pull` step is skipped, so **it effectively only restarts pm2 and reloads nginx — it does not ship new code.** Treat `scripts/deploy.sh` as the real deploy. (Improvement idea: make the Action call the same steps as `deploy.sh`.)
 
 ### Nginx
-`laxmisamadhan.conf` in the repo mirrors the live config (synced from the server). Edit here, copy to `/etc/nginx/sites-available/`, then `sudo nginx -t && sudo systemctl reload nginx`.
+`laxmisamadhan.conf` in the repo mirrors the live config (synced from the server). Edit here, copy to `/etc/nginx/sites-available/`, then `sudo nginx -t && sudo systemctl reload nginx`. Never put `add_header` inside `location /`: it would drop the server-level HSTS / X-Frame-Options headers (`expires` is fine).
+
+### Changing production data (deleting tickets, reassigning, fixing records)
+1. Show the owner the exact list first, and get a clear yes.
+2. Take a DB dump: `sudo -u postgres pg_dump ticket_portal | gzip > /var/www/laxmisamadhan/backups/db_before_<what>_$(date +%Y%m%d_%H%M%S).sql.gz`, then check it with `gunzip -t`.
+3. Run the change as **one SQL transaction** with a guard that aborts unless the expected row count matches.
+4. Write a history row (`TicketUpdate`) and an `ActivityLog` entry for anything users will see, and append a line to `/var/www/laxmisamadhan/DEPLOY_LOG`.
+5. Verify afterwards (counts, and that unrelated recent tickets are untouched).
 
 ### After every deploy — verify
 1. `scripts/deploy.sh status`
@@ -159,7 +197,8 @@ It SSHes in only if secret `EC2_SSH_KEY` exists (optional `EC2_HOST`, `EC2_USER`
 
 Never commit real values. Templates: `backend/.env.example`, `.env.production.example`.
 
-Key backend variables: `DATABASE_URL`, `PORT`, `API_PREFIX`, `FRONTEND_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET` (+ expiries), `ENCRYPTION_KEY`, `SMTP_*`, `EMAIL_FROM`, `MFA_ISSUER`, `UPLOAD_DIR`, `MAX_FILE_SIZE`, `RATE_LIMIT_*`, `LOG_*`, `WS_PORT`; inbound-mail (IMAP) settings per department — see `backend/src/services/inboundEmail.service.ts` and `mailPoller.service.ts`.
+Key backend variables: `DATABASE_URL`, `PORT`, `API_PREFIX`, `FRONTEND_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET` (+ expiries), `ENCRYPTION_KEY`, `SMTP_*`, `EMAIL_FROM`, `MFA_ISSUER` (production: "Laxmi Samadhan"), `UPLOAD_DIR`, `MAX_FILE_SIZE`, `RATE_LIMIT_*`, `LOG_*`, `WS_PORT`.
+**Email-to-ticket mailboxes are configured in the app, not in `.env`:** Admin → Departments → *department* → "Email-to-ticket mailbox" (Super Admin/Admin only). Enter the mailbox password, **Test connection**, tick **Enabled**, then **Save mailbox**. The password is stored AES-encrypted in the `DepartmentMailbox` table and never shown again. The old shared inbox is no longer polled.
 Frontend (build-time): `VITE_API_URL`, `VITE_WS_URL`.
 Production secrets live only on the EC2 server (backend `.env`) — the previous VAPT remediation made secrets **fail-closed** (the app refuses to start with weak/default secrets).
 
@@ -168,7 +207,10 @@ Production secrets live only on the EC2 server (backend `.env`) — the previous
 ## 8. Where things live (code map)
 
 - `backend/src/index.ts` — entry; `routes/` → `controllers/` → `services/` (business logic) → Prisma
-- `backend/src/services/`: `ticket`, `sla`, `escalation` (hierarchical Agent → Team Lead → Dept Head), `auth`, `user`, `inboundEmail` / `mailPoller` (email-to-ticket), `notification`, `websocket`, `report`, `knowledge`, `asset`, `approval`, `customField`, `macro`, `ai`
+- `backend/src/services/`: `ticket`, `sla`, `escalation` (hierarchical Agent → Team Lead → Dept Head), `auth`, `user`, `inboundEmail` / `inboundRules` / `mailPoller` (email-to-ticket), `notification`, `websocket`, `report`, `knowledge`, `asset`, `approval`, `customField`, `macro`, `ai`
+- `backend/src/controllers/mailbox.controller.ts`: department mailbox API (`/departments/:id/mailbox`, `…/test`, `…/check-now`; password write-only)
+- Notable tables: `DepartmentMailbox` (encrypted IMAP credentials + UID cursor), `TicketSequence` (ticket-number counters), `Ticket.resolvedById`
+- `frontend/src/utils/`: `ticketContacts.ts` (who is shown), `imageCompress.ts` + `upload.ts` (attachments), `socketUrl.ts` (live updates URL)
 - `backend/prisma/schema.prisma` — the whole data model; `seed.ts`, `seed_sla_policies.sql`
 - `backend/src/__tests__/`, `frontend/src/utils/*.test.ts` — vitest unit tests (deploy is gated on them)
 - `frontend/src/` — `pages/`, `components/`, `context/` (Auth, Socket), `services/api.ts` (API base URL logic), `utils/`
@@ -202,7 +244,12 @@ Tips for good results with any model:
 - Fix the remaining backend TypeScript errors and lower `TSC_BASELINE` to 0.
 - Align `vite.config.ts` proxy/port with the actual backend port for local dev.
 - Add the Android signing secrets so the mobile build goes green.
-- Add automated DB backups on the server and document restore steps.
+- ~~Automated DB backups~~ done: nightly 02:00 (root cron → `scripts/backup_db.sh`, 14-day retention in `/var/backups/laxmisamadhan`). Still to do: copy them off the server (e.g. S3), and document restore steps.
+- Close public port 3001 in the EC2 Security Group (the backend only needs nginx).
+- Turn on email-to-ticket for each department that has a support address (Admin → Departments).
+- The published KB article "Security Incident Reporting Guide" still has placeholder contacts (security email / hotline). Replace them with the real ones.
+- The Agent Performance report lists only Agent/Team Lead roles; dept heads and admins who resolve tickets appear on the Management Dashboard instead.
+- Add `image/webp` to the server's `ALLOWED_MIME_TYPES` if WebP uploads are wanted.
 
 ---
 
@@ -217,3 +264,6 @@ Tips for good results with any model:
 | pm2 app | `ticket-backend` |
 | Local ports | frontend 5173, API 3000, WebSocket 3001, Postgres 5432 |
 | Deploy | `scripts/deploy.sh status|backend|frontend|all|rollback` |
+| Deploy / DB backups (server) | `/var/www/laxmisamadhan/backups` (made by deploy.sh and before data changes), nightly DB dumps in `/var/backups/laxmisamadhan` |
+| Change log on server | `/var/www/laxmisamadhan/DEPLOY_LOG` |
+| Unit tests | backend `npx vitest run` (~104), frontend `npx -y pnpm@9 exec vitest run` (~42) |
