@@ -84,3 +84,20 @@ describe('updateStatus — resolving records the resolver and reassigns', () => 
     expect(data.assignedTo).toBeUndefined();
   });
 });
+
+import { creditedResolverId, resolvedByPersonWhere } from '../services/report.service';
+
+describe('reports — resolved tickets count for the person who resolved them', () => {
+  it('credits the resolver, even if the ticket is assigned to someone else', () => {
+    expect(creditedResolverId({ resolvedById: 'narendra', assignedToId: 'asheesh' })).toBe('narendra');
+  });
+  it('falls back to the assignee for old tickets with no recorded resolver', () => {
+    expect(creditedResolverId({ resolvedById: null, assignedToId: 'asheesh' })).toBe('asheesh');
+  });
+  it('per-person filter matches the same rule', () => {
+    expect(resolvedByPersonWhere('narendra')).toEqual({
+      status: 'RESOLVED',
+      OR: [{ resolvedById: 'narendra' }, { resolvedById: null, assignedToId: 'narendra' }],
+    });
+  });
+});

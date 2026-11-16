@@ -14,6 +14,23 @@ interface ReportParams {
   userDepartmentId?: string;
 }
 
+/**
+ * Who gets credit for a resolved ticket in reports: the person who resolved it
+ * (resolvedById), falling back to the assignee for old tickets with no recorded resolver.
+ * Unit-tested in src/__tests__/resolution_credit.test.ts.
+ */
+export function creditedResolverId(t: { resolvedById?: string | null; assignedToId?: string | null }): string | null {
+  return t.resolvedById || t.assignedToId || null;
+}
+
+/** Prisma filter: resolved tickets credited to a given person (same rule as creditedResolverId). */
+export function resolvedByPersonWhere(personId: string) {
+  return {
+    status: TicketStatus.RESOLVED,
+    OR: [{ resolvedById: personId }, { resolvedById: null, assignedToId: personId }],
+  };
+}
+
 class ReportService {
   async getDashboardStats(params: ReportParams): Promise<any> {
     const where = this.buildTicketWhere(params);
@@ -150,6 +167,7 @@ class ReportService {
           status: true,
           slaStatus: true,
           assignedToId: true,
+          resolvedById: true,
           departmentId: true,
           slaPolicyId: true,
           createdAt: true,
@@ -173,13 +191,15 @@ class ReportService {
       }),
     ]);
 
+    // Open tickets count for their assignee; resolved tickets count for whoever resolved them.
     const ticketsByAgent = new Map<string, typeof allTickets>();
     for (const t of allTickets) {
-      if (t.assignedToId) {
-        if (!ticketsByAgent.has(t.assignedToId)) {
-          ticketsByAgent.set(t.assignedToId, []);
+      const personId = t.status === TicketStatus.RESOLVED ? creditedResolverId(t) : t.assignedToId;
+      if (personId) {
+        if (!ticketsByAgent.has(personId)) {
+          ticketsByAgent.set(personId, []);
         }
-        ticketsByAgent.get(t.assignedToId)!.push(t);
+        ticketsByAgent.get(personId)!.push(t);
       }
     }
 
@@ -613,7 +633,8 @@ class ReportService {
 
     const performance = await Promise.all(agents.map(async (agent) => {
       const assignedWhere = { ...where, assignedToId: agent.id };
-      const resolvedWhere = { ...assignedWhere, status: TicketStatus.RESOLVED };
+      // Resolved tickets are credited to the person who resolved them (see creditedResolverId).
+      const resolvedWhere = { AND: [where, resolvedByPersonWhere(agent.id)] };
 
       const [assigned, resolved, avgTime, slaCompliance] = await Promise.all([
         prisma.ticket.count({ where: assignedWhere }),
