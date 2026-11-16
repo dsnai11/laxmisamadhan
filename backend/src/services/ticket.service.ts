@@ -80,6 +80,19 @@ export function resolveAssignmentActor(
   return { isSystem, assignedById: isSystem ? null : (assignedById as string) };
 }
 
+/**
+ * Credit for resolving a ticket (unit-tested in src/__tests__/resolution_credit.test.ts).
+ * Whoever resolves a ticket is recorded as resolvedBy; if that is a staff member other than the
+ * current assignee (e.g. a teammate covering from the team bucket while the assignee is away),
+ * the ticket is also reassigned to them so lists, the team bucket and agent reports credit the
+ * person who actually did the work.
+ */
+const RESOLVER_STAFF_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD', 'AGENT'];
+export function resolutionCredit(p: { resolverId: string; resolverRoles: string[]; assignedToId: string | null }): { reassign: boolean } {
+  const isStaff = p.resolverRoles.some((r) => RESOLVER_STAFF_ROLES.includes(r));
+  return { reassign: isStaff && p.resolverId !== p.assignedToId };
+}
+
 class TicketService {
   async createTicket(data: CreateTicketData): Promise<any> {
     const department = await prisma.department.findUnique({
@@ -225,6 +238,7 @@ class TicketService {
         raisedBy: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, employeeId: true, jobTitle: true, site: true, reportingManagerName: true, avatar: true, department: true } },
         assignedTo: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, employeeId: true, jobTitle: true, site: true, avatar: true, role: true, department: true } },
         assignedBy: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, mobile: true, role: true, employeeId: true, department: true } },
+        resolvedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
         department: true,
         team: { include: { lead: { select: { id: true, firstName: true, lastName: true } } } },
         slaPolicy: true,
@@ -596,17 +610,39 @@ class TicketService {
       throw new Error(`Invalid status transition from ${ticket.status} to ${status}`);
     }
 
-    const updateData: Prisma.TicketUpdateInput = {
-      status,
-      updates: {
-        create: {
-          field: 'status',
-          oldValue: ticket.status,
-          newValue: status,
-          userId,
-        },
-      },
-    };
+    const historyRows: Prisma.TicketUpdateCreateWithoutTicketInput[] = [
+      { field: 'status', oldValue: ticket.status, newValue: status, user: { connect: { id: userId } } },
+    ];
+    const updateData: Prisma.TicketUpdateInput = { status };
+
+    // Resolution credit: record the resolver and, if a teammate resolved someone else's ticket,
+    // reassign it to them.
+    let creditedFrom: { id: string; name: string } | null = null;
+    let resolverName = '';
+    if (status === TicketStatus.RESOLVED) {
+      const resolver = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, firstName: true, lastName: true, role: true, roles: true },
+      });
+      resolverName = resolver ? `${resolver.firstName} ${resolver.lastName}`.trim() : '';
+      updateData.resolvedBy = { connect: { id: userId } };
+      const { reassign } = resolutionCredit({
+        resolverId: userId,
+        resolverRoles: Array.from(new Set([userRole, ...((resolver?.roles as string[]) || []), ...(resolver?.role ? [resolver.role] : [])])),
+        assignedToId: ticket.assignedToId,
+      });
+      if (reassign) {
+        const previousName = ticket.assignedTo ? `${ticket.assignedTo.firstName} ${ticket.assignedTo.lastName}`.trim() : 'Unassigned';
+        if (ticket.assignedToId) creditedFrom = { id: ticket.assignedToId, name: previousName };
+        updateData.assignedTo = { connect: { id: userId } };
+        updateData.assignedBy = { connect: { id: userId } };
+        updateData.assignedAt = new Date();
+        historyRows.push({ field: 'assignedTo', oldValue: previousName, newValue: resolverName, user: { connect: { id: userId } } });
+      }
+    } else if (status === TicketStatus.REOPENED) {
+      updateData.resolvedBy = { disconnect: true };
+    }
+    updateData.updates = { create: historyRows };
 
     if (!ticket.respondedAt && status === TicketStatus.OPEN) {
       updateData.respondedAt = new Date();
@@ -627,6 +663,7 @@ class TicketService {
       include: {
         raisedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
+        resolvedBy: { select: { id: true, firstName: true, lastName: true } },
         department: true,
         watchers: true,
       },
@@ -639,6 +676,25 @@ class TicketService {
     });
 
     await this.sendStatusChangeNotifications(updatedTicket, ticket.status, status, resolution);
+
+    if (creditedFrom) {
+      await logActivity(userId, 'TICKET_ASSIGNED', `Resolved by ${resolverName} on behalf of ${creditedFrom.name}; reassigned to resolver`, ticket.id, {
+        previousAssigneeId: creditedFrom.id,
+        resolvedById: userId,
+      });
+      await prisma.notification
+        .create({
+          data: {
+            userId: creditedFrom.id,
+            type: 'TICKET_RESOLVED',
+            title: 'Your ticket was resolved by a teammate',
+            message: `${ticket.ticketNumber} was resolved by ${resolverName} and is now credited to them.`,
+            referenceId: ticket.id,
+            referenceType: 'TICKET',
+          },
+        })
+        .catch(() => undefined);
+    }
 
     return updatedTicket;
   }

@@ -107,6 +107,8 @@ export interface Ticket {
   resolutionDueAt?: string;
   respondedAt?: string;
   resolvedAt?: string;
+  resolvedById?: string | null;
+  resolvedBy?: { id: string; firstName: string; lastName: string; role?: string } | null;
   closedAt?: string;
   reopenedCount: number;
   tags: string[];

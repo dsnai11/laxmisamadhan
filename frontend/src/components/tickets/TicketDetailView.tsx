@@ -266,6 +266,9 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
         <h1 className="mt-1 text-2xl font-bold text-gray-900 break-words">{ticket.title}</h1>
         <p className="text-sm text-gray-500 mt-1">
           Raised by {fullName(ticket.raisedBy)} · {formatDate(ticket.createdAt, 'datetime')} · {ticket.department?.name}
+          {ticket.status === 'RESOLVED' && ticket.resolvedBy && (
+            <> · <span className="font-medium text-emerald-700">Resolved by {fullName(ticket.resolvedBy)}</span>{ticket.resolvedAt ? ` · ${formatDate(ticket.resolvedAt, 'datetime')}` : ''}</>
+          )}
         </p>
       </div>
 

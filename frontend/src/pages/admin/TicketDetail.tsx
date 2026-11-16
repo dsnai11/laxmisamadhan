@@ -320,6 +320,12 @@ export default function AdminTicketDetail() {
                 <dt className="text-gray-500">Assigned to</dt>
                 <dd>{ticket.assignedTo ? `${ticket.assignedTo.firstName} ${ticket.assignedTo.lastName}` : '—'}</dd>
               </div>
+              {ticket.status === 'RESOLVED' && ticket.resolvedBy && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Resolved by</dt>
+                  <dd className="font-medium text-emerald-700">{ticket.resolvedBy.firstName} {ticket.resolvedBy.lastName}</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-gray-500">Created</dt>
                 <dd>{formatRelativeTime(ticket.createdAt)}</dd>

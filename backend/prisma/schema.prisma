@@ -144,6 +144,7 @@ model User {
   ticketsRaised     Ticket[]  @relation("TicketRaiser")
   ticketsAssigned   Ticket[]  @relation("TicketAssignee")
   ticketsAssignedBy Ticket[]  @relation("TicketAssigner")
+  ticketsResolved   Ticket[]  @relation("TicketResolver")
   ticketWatchers    TicketWatcher[] @relation("TicketWatcherUser")
   ticketsUpdated    TicketUpdate[]
   comments          Comment[]
@@ -293,6 +294,8 @@ model Ticket {
   resolutionDueAt DateTime?
   respondedAt     DateTime?
   resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedBy      User?         @relation("TicketResolver", fields: [resolvedById], references: [id])
   closedAt        DateTime?
   resolution      String?
   resolutionSummary String?
@@ -322,6 +325,7 @@ model Ticket {
   @@index([category])
   @@index([createdAt])
   @@index([slaStatus])
+  @@index([resolvedById])
 }
 
 model TicketUpdate {
