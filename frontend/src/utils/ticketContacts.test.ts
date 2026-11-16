@@ -116,3 +116,43 @@ describe('isAutomaticAssignment — activity feed wording', () => {
     expect(isAutomaticAssignment({ field: 'status', user: yusuf }, baseTicket)).toBe(false);
   });
 });
+
+import { previousAssigneeBeforeResolution, describeAssignment } from './ticketContacts';
+
+// TKT-26-00025: assigned to Narendra, later resolved by Asheesh -> credited to Asheesh.
+const asheeshU = { id: 'asheesh', firstName: 'Asheesh', lastName: 'Gupta', role: 'AGENT' };
+const kapilU = { id: 'kapil', firstName: 'kapil', lastName: 'solanki', role: 'AGENT' };
+const t25 = {
+  status: 'RESOLVED', raisedById: 'raiser', assignedToId: 'asheesh', resolvedBy: asheeshU,
+  updates: [
+    { field: 'assignedTo', oldValue: 'Narendra Saini', newValue: 'Asheesh Gupta', isSystem: false, user: asheeshU, createdAt: '2026-11-16T12:03:01Z' },
+    { field: 'status', oldValue: 'REOPENED', newValue: 'RESOLVED', user: asheeshU, createdAt: '2026-11-16T10:52:00Z' },
+    { field: 'assignedTo', oldValue: 'Unassigned', newValue: 'Narendra Saini', isSystem: false, user: kapilU, createdAt: '2026-10-19T06:24:00Z' },
+  ],
+};
+
+describe('previousAssigneeBeforeResolution — "earlier assigned to" on resolved tickets', () => {
+  it('shows who had it before the resolver took the credit', () => {
+    expect(previousAssigneeBeforeResolution(t25)).toBe('Narendra Saini');
+  });
+  it('null when the assignee resolved it themselves', () => {
+    expect(previousAssigneeBeforeResolution({ ...t25, updates: [t25.updates[2]] })).toBeNull();
+  });
+  it('null for tickets that are not resolved', () => {
+    expect(previousAssigneeBeforeResolution({ ...t25, status: 'OPEN' })).toBeNull();
+  });
+});
+
+describe('describeAssignment — activity wording always names who it moved from', () => {
+  it('resolver credit row', () => {
+    expect(describeAssignment(t25.updates[0], t25)).toBe('Ticket reassigned from Narendra Saini to Asheesh Gupta');
+  });
+  it('first assignment by a colleague', () => {
+    expect(describeAssignment(t25.updates[2], t25)).toBe('kapil solanki assigned the ticket to Narendra Saini');
+  });
+  it('manual reassignment by a team lead', () => {
+    const lead = { id: 'hari', firstName: 'Hari', lastName: 'Yadav', role: 'TEAM_LEAD' };
+    expect(describeAssignment({ field: 'assignedTo', oldValue: 'Satypal Singh', newValue: 'Narendra Saini', user: lead }, { raisedById: 'r', assignedToId: 'narendra' }))
+      .toBe('Hari Yadav reassigned the ticket from Satypal Singh to Narendra Saini');
+  });
+});

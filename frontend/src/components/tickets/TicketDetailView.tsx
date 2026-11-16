@@ -11,7 +11,7 @@ import AICopilotPanel from '@components/ai/AICopilotPanel';
 import MacroSelector from '@components/macros/MacroSelector';
 import SLACountdown from '@components/sla/SLACountdown';
 import TicketContactCards from '@components/tickets/TicketContactCards';
-import { isAutomaticAssignment } from '@utils/ticketContacts';
+import { describeAssignment, previousAssigneeBeforeResolution } from '@utils/ticketContacts';
 import AssignedAgentTopTile from '@components/tickets/AssignedAgentTopTile';
 import {
   Avatar,
@@ -45,12 +45,7 @@ function fullName(u?: { firstName?: string; lastName?: string } | null) {
 function describeUpdate(u: any, ticket?: any): string {
   const who = fullName(u.user) || 'Someone';
   if (u.field === 'status') return `${who} changed status from ${humanize(u.oldValue)} to ${humanize(u.newValue)}`;
-  if (u.field === 'assignedTo') {
-    if (isAutomaticAssignment(u, ticket) || u.oldValue === 'Unassigned') {
-      return `Ticket assigned to ${humanize(u.newValue) || 'support agent'}`;
-    }
-    return `${who} assigned the ticket to ${humanize(u.newValue) || 'support agent'}`;
-  }
+  if (u.field === 'assignedTo') return describeAssignment(u, ticket);
   if (u.newValue !== null && u.newValue !== undefined) return `${who} changed ${humanize(u.field)} from ${humanize(u.oldValue) || 'none'} to ${humanize(u.newValue)}`;
   return `${who} updated ${humanize(u.field)}`;
 }
@@ -267,7 +262,8 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
         <p className="text-sm text-gray-500 mt-1">
           Raised by {fullName(ticket.raisedBy)} · {formatDate(ticket.createdAt, 'datetime')} · {ticket.department?.name}
           {ticket.status === 'RESOLVED' && ticket.resolvedBy && (
-            <> · <span className="font-medium text-emerald-700">Resolved by {fullName(ticket.resolvedBy)}</span>{ticket.resolvedAt ? ` · ${formatDate(ticket.resolvedAt, 'datetime')}` : ''}</>
+            <> · <span className="font-medium text-emerald-700">Resolved by {fullName(ticket.resolvedBy)}</span>{ticket.resolvedAt ? ` · ${formatDate(ticket.resolvedAt, 'datetime')}` : ''}
+              {previousAssigneeBeforeResolution(ticket) && <> · <span className="text-gray-600">previously assigned to {previousAssigneeBeforeResolution(ticket)}</span></>}</>
           )}
         </p>
       </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { previousAssigneeBeforeResolution } from '@utils/ticketContacts';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -324,6 +325,12 @@ export default function AdminTicketDetail() {
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Resolved by</dt>
                   <dd className="font-medium text-emerald-700">{ticket.resolvedBy.firstName} {ticket.resolvedBy.lastName}</dd>
+                </div>
+              )}
+              {previousAssigneeBeforeResolution(ticket) && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Previously assigned to</dt>
+                  <dd>{previousAssigneeBeforeResolution(ticket)}</dd>
                 </div>
               )}
               <div className="flex justify-between">
