@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 const prismaMock = vi.hoisted(() => ({
   ticket: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   user: { findUnique: vi.fn() },
-  team: { findUnique: vi.fn() },
+  team: { findUnique: vi.fn(), findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
   notification: { create: vi.fn().mockResolvedValue({}) },
 }));
 vi.mock('@config/prisma', () => ({ prisma: prismaMock }));
@@ -67,7 +67,7 @@ describe('assignTicket — assigning is not a response', () => {
       id: 't1', ticketNumber: 'TKT-26-00099', departmentId: 'd1', raisedById: 'raiser', teamId: null,
       respondedAt: null, assignedTo: null, assignedToId: null, department: { id: 'd1', headId: 'head' }, title: 'x',
     });
-    prismaMock.user.findUnique.mockResolvedValue({ id: 'agent', firstName: 'A', lastName: 'B', email: 'a@lifc.in', role: 'AGENT', roles: ['AGENT'], status: 'ACTIVE' });
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'agent', firstName: 'A', lastName: 'B', email: 'a@lifc.in', role: 'AGENT', roles: ['AGENT'], status: 'ACTIVE', departmentId: 'd1' });
     prismaMock.ticket.update.mockResolvedValue({ id: 't1', ticketNumber: 'TKT-26-00099', title: 'x', raisedBy: { id: 'raiser' }, assignedTo: { id: 'agent' }, assignedBy: null, department: {} });
 
     await ticketService.assignTicket('t1', 'agent', undefined as any, undefined, 'Auto-assigned by system').catch(() => undefined);

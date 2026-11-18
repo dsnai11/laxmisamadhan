@@ -4,7 +4,7 @@ import { logActivity } from '@middleware/audit.middleware';
 import emailService from './email.service';
 import config from '@config/index';
 import { TicketStatus, TicketPriority, TicketCategory, SLAStatus, Prisma, UserRole, NotificationType, ApprovalStatus } from '@prisma/client';
-import { AuthorizationError, NotFoundError } from '@middleware/error.middleware';
+import { AppError, AuthorizationError, NotFoundError } from '@middleware/error.middleware';
 import { subMinutes, addMinutes, isBefore, isAfter } from 'date-fns';
 import fs from 'fs';
 import path from 'path';
@@ -93,6 +93,32 @@ export function resolveAssignmentActor(
 ): { isSystem: boolean; assignedById: string | null } {
   const isSystem = note === 'Auto-assigned by system' || !assignedById || assignedById === raisedById;
   return { isSystem, assignedById: isSystem ? null : (assignedById as string) };
+}
+
+/**
+ * Who may assign / reassign a ticket in a department (unit-tested in reassign_rights.test.ts):
+ * Super Admin, Admin, that department's head (or a Department Head of that department), and that
+ * department's team leads (TEAM_LEAD role in the department, or lead of any team in it).
+ * Agents, raisers and staff of other departments may not.
+ */
+export function canReassignTicket(p: {
+  actorId: string;
+  actorRoles: string[];
+  actorDeptId: string | null;
+  ticketDeptId: string;
+  deptHeadId: string | null;
+  leadsTeamInDept: boolean;
+}): boolean {
+  if (p.actorRoles.some((r) => r === 'SUPER_ADMIN' || r === 'ADMIN')) return true;
+  const sameDept = !!p.actorDeptId && p.actorDeptId === p.ticketDeptId;
+  const isDeptHead = p.deptHeadId === p.actorId || (p.actorRoles.includes('DEPARTMENT_HEAD') && sameDept);
+  const isTeamLead = p.leadsTeamInDept || (p.actorRoles.includes('TEAM_LEAD') && sameDept);
+  return isDeptHead || isTeamLead;
+}
+
+/** A ticket can only be (re)assigned to someone in its own department (to move it, transfer the ticket). */
+export function assigneeBelongsToDepartment(p: { assigneeDeptId: string | null; assigneeTeamDeptIds: string[]; ticketDeptId: string; isDeptHead: boolean }): boolean {
+  return p.isDeptHead || p.assigneeDeptId === p.ticketDeptId || p.assigneeTeamDeptIds.includes(p.ticketDeptId);
 }
 
 /**
@@ -322,6 +348,11 @@ class TicketService {
     userRole: UserRole,
     userRoles?: UserRole[]
   ): Promise<any> {
+    // Assignee / team can only change through assignTicket (POST /tickets/:id/assign), which enforces
+    // who may reassign and that the assignee is in the ticket's department.
+    if ((data as any).assignedToId !== undefined || (data as any).teamId !== undefined) {
+      throw new AppError('To assign or reassign a ticket use the Assign action (POST /tickets/:id/assign).', 400, 'USE_ASSIGN_ENDPOINT');
+    }
     const ticket = await prisma.ticket.findUnique({
       where: this.resolveTicketWhere(id) as any,
       include: { department: true },
@@ -480,28 +511,24 @@ class TicketService {
       ...(actorRoles || [])
     ]));
 
+    // System auto-assignment passes no actor roles; every user-driven assignment does.
     if (effectiveRoles.length > 0) {
-      const actorDept = await this.getUserDepartmentId(assignedById);
-      const sameDept = !!actorDept && actorDept === ticket.departmentId;
-
-      let isTeamLeadOfTicket = false;
-      if (ticket.teamId) {
-        const team = await prisma.team.findUnique({
-          where: { id: ticket.teamId },
-          select: { leadId: true }
-        });
-        if (team && team.leadId === assignedById) {
-          isTeamLeadOfTicket = true;
-        }
-      }
-
-      const isSuperAdminOrAdmin = effectiveRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r));
-      const isDeptHead = (effectiveRoles.includes('DEPARTMENT_HEAD') && sameDept) || (ticket.department?.headId === assignedById);
-      const isTeamLead = (effectiveRoles.includes('TEAM_LEAD') && sameDept) || isTeamLeadOfTicket;
-      const canAssignOrReassign = isSuperAdminOrAdmin || isDeptHead || isTeamLead;
-
-      if (!canAssignOrReassign) {
-        throw new AuthorizationError('Permission denied: Only Team Leads, Department Heads, and Super Admins can assign or reassign tickets');
+      const [actorDept, leadsTeamInDept] = await Promise.all([
+        this.getUserDepartmentId(assignedById),
+        prisma.team.count({ where: { departmentId: ticket.departmentId, leadId: assignedById } }),
+      ]);
+      const allowed = canReassignTicket({
+        actorId: assignedById,
+        actorRoles: effectiveRoles,
+        actorDeptId: actorDept || null,
+        ticketDeptId: ticket.departmentId,
+        deptHeadId: ticket.department?.headId ?? null,
+        leadsTeamInDept: leadsTeamInDept > 0,
+      });
+      if (!allowed) {
+        throw new AuthorizationError(
+          "Permission denied: only this department's Team Leads and Department Head (or an Admin) can assign or reassign its tickets"
+        );
       }
     }
 
@@ -520,6 +547,23 @@ class TicketService {
 
     if (!assigneeRoles.some(r => STAFF_ROLES.includes(r)) || assignee.status !== 'ACTIVE') {
       throw new Error('Tickets can only be assigned to active staff members');
+    }
+
+    const assigneeTeams = await prisma.team.findMany({
+      where: { members: { some: { id: assignee.id } } },
+      select: { departmentId: true },
+    });
+    if (!assigneeBelongsToDepartment({
+      assigneeDeptId: assignee.departmentId,
+      assigneeTeamDeptIds: assigneeTeams.map((t) => t.departmentId),
+      ticketDeptId: ticket.departmentId,
+      isDeptHead: ticket.department?.headId === assignee.id,
+    })) {
+      throw new AppError(
+        `${assignee.firstName} ${assignee.lastName} is not in this ticket's department. Transfer the ticket to their department instead.`,
+        400,
+        'ASSIGNEE_OTHER_DEPARTMENT'
+      );
     }
 
     const { isSystem: isSystemAutoAssign, assignedById: actualAssignedById } =
