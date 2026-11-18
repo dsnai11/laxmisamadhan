@@ -4,6 +4,10 @@ const prismaMock = vi.hoisted(() => ({
   ticket: { findUnique: vi.fn(), update: vi.fn() },
   user: { findUnique: vi.fn() },
   team: { count: vi.fn(), findMany: vi.fn() },
+  department: { findUnique: vi.fn() },
+  comment: { create: vi.fn().mockResolvedValue({}) },
+  sLAPolicy: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
+  ticketCategoryConfig: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null) },
   notification: { create: vi.fn().mockResolvedValue({}) },
 }));
 vi.mock('@config/prisma', () => ({ prisma: prismaMock }));
@@ -97,5 +101,66 @@ describe('assignTicket / updateTicket enforcement', () => {
       .rejects.toThrow(/Assign action/);
     await expect(ticketService.updateTicket('t1', { teamId: 'team-x' } as any, 'asheesh', 'AGENT' as any))
       .rejects.toThrow(/Assign action/);
+  });
+});
+
+
+describe('transfer to another department (wrongly raised tickets)', () => {
+  const ticket = { id: 't2', ticketNumber: 'TKT-26-00081', departmentId: HW, raisedById: 'yusuf', assignedToId: 'asheesh', teamId: 'team-hw',
+    status: 'OPEN', resolvedAt: null, department: { id: HW, name: 'IT Hardware/Software', headId: 'sunil' }, priority: 'MEDIUM', category: 'SOFTWARE_REQUEST' };
+  const people: Record<string, any> = {
+    hari: { id: 'hari', departmentId: HW }, sunil: { id: 'sunil', departmentId: HW }, asheesh: { id: 'asheesh', departmentId: HW },
+    vinod: { id: 'vinod', departmentId: APP }, yusuf: { id: 'yusuf', departmentId: HW }, admin: { id: 'admin', departmentId: null },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.ticket.findUnique.mockResolvedValue(ticket);
+    prismaMock.user.findUnique.mockImplementation(({ where }: any) => Promise.resolve(people[where.id] || null));
+    prismaMock.team.count.mockResolvedValue(0);
+    prismaMock.department.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.id === APP ? { id: APP, name: 'IT Application', headId: 'vinod', autoAssign: true, assignStrategy: 'round_robin' } : null));
+    prismaMock.ticket.update.mockImplementation(({ data }: any) =>
+      Promise.resolve({ ...ticket, departmentId: APP, department: { id: APP, name: 'IT Application' }, assignedToId: null, _data: data }));
+    vi.spyOn(ticketService as any, 'sendTicketUpdatedNotifications').mockResolvedValue(undefined);
+    vi.spyOn(ticketService as any, 'autoAssignTicket').mockResolvedValue({ id: 't2', assignedToId: 'ansul' });
+  });
+
+  const transfer = (actor: string, roles: string[], to = APP) =>
+    ticketService.updateTicket('t2', { departmentId: to, transferReason: 'Raised in wrong department' } as any, actor, roles[0] as any, roles as any);
+
+  it('team lead Hari can forward it to IT Application; it is unassigned there and auto-assigned', async () => {
+    const result = await transfer('hari', ['TEAM_LEAD']);
+    const data = prismaMock.ticket.update.mock.calls[0][0].data;
+    expect(data.department).toEqual({ connect: { id: APP } });
+    expect(data.assignedTo).toEqual({ disconnect: true });
+    expect(data.team).toEqual({ disconnect: true });
+    expect((ticketService as any).autoAssignTicket).toHaveBeenCalledWith('t2', 'round_robin');
+    expect(result).toEqual({ id: 't2', assignedToId: 'ansul' });
+    // the new department's head is told
+    expect(prismaMock.notification.create.mock.calls.some((c: any) => c[0].data.userId === 'vinod')).toBe(true);
+  });
+
+  it('the department head and admins can transfer', async () => {
+    await expect(transfer('sunil', ['DEPARTMENT_HEAD'])).resolves.toBeTruthy();
+    await expect(transfer('admin', ['ADMIN'])).resolves.toBeTruthy();
+  });
+
+  it('an agent (even the assignee) cannot transfer', async () => {
+    await expect(transfer('asheesh', ['AGENT'])).rejects.toThrow(/Team Leads and Department Head/);
+    expect(prismaMock.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it('the raiser cannot transfer', async () => {
+    await expect(transfer('yusuf', ['RAISER'])).rejects.toThrow(/Team Leads and Department Head/);
+  });
+
+  it('another department\'s head cannot transfer this department\'s ticket', async () => {
+    await expect(transfer('vinod', ['DEPARTMENT_HEAD'])).rejects.toThrow(/Team Leads and Department Head/);
+  });
+
+  it('unknown target department is a clear 400', async () => {
+    await expect(transfer('hari', ['TEAM_LEAD'], 'dept-missing')).rejects.toThrow(/Target department not found/);
+    expect(prismaMock.ticket.update).not.toHaveBeenCalled();
   });
 });

@@ -116,6 +116,13 @@ export function canReassignTicket(p: {
   return isDeptHead || isTeamLead;
 }
 
+/**
+ * Who may transfer (forward) a ticket raised in the wrong department to another department:
+ * the same group as reassignment — Super Admin, Admin, the ticket's department head and its
+ * team leads. Tested in reassign_rights.test.ts.
+ */
+export const canTransferTicket = canReassignTicket;
+
 /** A ticket can only be (re)assigned to someone in its own department (to move it, transfer the ticket). */
 export function assigneeBelongsToDepartment(p: { assigneeDeptId: string | null; assigneeTeamDeptIds: string[]; ticketDeptId: string; isDeptHead: boolean }): boolean {
   return p.isDeptHead || p.assigneeDeptId === p.ticketDeptId || p.assigneeTeamDeptIds.includes(p.ticketDeptId);
@@ -363,9 +370,27 @@ class TicketService {
     }
 
     const userDeptId = await this.getUserDepartmentId(userId);
+    const actorRoles: UserRole[] = Array.from(new Set([...(userRole ? [userRole] : []), ...(userRoles || [])]));
+    const isTransfer = !!data.departmentId && data.departmentId !== ticket.departmentId;
 
-    if (!this.canModifyTicket(ticket, userId, userRole, userDeptId, userRoles)) {
-      throw new Error('Permission denied');
+    if (isTransfer) {
+      const leadsTeamInDept = await prisma.team.count({ where: { departmentId: ticket.departmentId, leadId: userId } });
+      if (!canTransferTicket({
+        actorId: userId,
+        actorRoles,
+        actorDeptId: userDeptId || null,
+        ticketDeptId: ticket.departmentId,
+        deptHeadId: ticket.department?.headId ?? null,
+        leadsTeamInDept: leadsTeamInDept > 0,
+      })) {
+        throw new AuthorizationError(
+          "Permission denied: only this department's Team Leads and Department Head (or an Admin) can transfer its tickets to another department"
+        );
+      }
+      const target = await prisma.department.findUnique({ where: { id: data.departmentId! }, select: { id: true } });
+      if (!target) throw new AppError('Target department not found', 400, 'DEPARTMENT_NOT_FOUND');
+    } else if (!this.canModifyTicket(ticket, userId, userRole, userDeptId, userRoles)) {
+      throw new AuthorizationError('Permission denied');
     }
 
     const oldValues: Record<string, any> = {};
@@ -392,20 +417,8 @@ class TicketService {
     }
 
     // If transferring to a new department (e.g. raised in wrong department):
-    if (data.departmentId && data.departmentId !== ticket.departmentId) {
-      const allRoles: UserRole[] = Array.from(new Set([
-        ...(userRole ? [userRole] : []),
-        ...(userRoles || [])
-      ]));
-      const sameDept = !!userDeptId && userDeptId === ticket.departmentId;
-      const canTransfer = allRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))
-        || (ticket.department?.headId === userId)
-        || (allRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) && sameDept);
-
-      if (!canTransfer) {
-        throw new Error('Permission denied: Only Team Leads, Department Heads, and Admins can transfer ticket to another department');
-      }
-
+    if (isTransfer) {
+      // permission already checked above (canTransferTicket)
       updates.department = { connect: { id: data.departmentId } };
       // Clear old assignment and team since they belong to the previous department
       updates.assignedTo = { disconnect: true };
@@ -481,6 +494,34 @@ class TicketService {
           isInternal: true,
         },
       });
+
+      // Forwarded tickets are picked up in the new department just like new tickets:
+      // tell its head, and auto-assign if the department has auto-assignment on.
+      const newDept = await prisma.department.findUnique({ where: { id: updatedTicket.departmentId }, select: { headId: true, autoAssign: true, assignStrategy: true } });
+      if (newDept?.headId && newDept.headId !== userId) {
+        await prisma.notification
+          .create({
+            data: {
+              userId: newDept.headId,
+              type: 'TICKET_ASSIGNED',
+              title: 'Ticket transferred to your department',
+              message: `${updatedTicket.ticketNumber} was transferred from ${oldDeptName}${data.transferReason ? `: ${data.transferReason}` : ''}.`,
+              referenceId: updatedTicket.id,
+              referenceType: 'TICKET',
+            },
+          })
+          .catch(() => undefined);
+      }
+      if (newDept?.autoAssign) {
+        const assigned = await this.autoAssignTicket(updatedTicket.id, newDept.assignStrategy || 'round_robin').catch((e) => {
+          logger.warn('Auto-assign after transfer failed', { ticketId: updatedTicket.id, error: e instanceof Error ? e.message : String(e) });
+          return null;
+        });
+        if (assigned) {
+          await this.sendTicketUpdatedNotifications(updatedTicket, oldValues);
+          return assigned;
+        }
+      }
     }
 
     await this.sendTicketUpdatedNotifications(updatedTicket, oldValues);
