@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { canManageAssignment } from '@utils/assignmentRights';
 import { previousAssigneeBeforeResolution } from '@utils/ticketContacts';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -99,6 +100,7 @@ export default function AdminTicketDetail() {
   if (isLoading) return <PageLoader />;
   if (error || !ticket) return <ErrorState error={error || 'Ticket not found'} onRetry={refetch} />;
 
+  const canAssignHere = canManageAssignment(user, ticket); // Super Admin, Admin, this dept's head / team leads
   const agents = (users?.data || []).filter((u: any) => ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'].includes(u.role));
   const teamList = teams || [];
   const needsResolution = newStatus === 'RESOLVED';
@@ -277,10 +279,12 @@ export default function AdminTicketDetail() {
           {/* Admin Actions */}
           <div className="card p-4 space-y-2.5">
             <h3 className="font-semibold text-gray-900 text-sm mb-2">Admin Actions</h3>
+            {canAssignHere && (
             <button className="btn-primary btn-sm w-full" onClick={() => { setNewAssignee(ticket.assignedToId || ''); setNewTeam(ticket.teamId || ''); setAssignModal(true); }}>
               {ticket.assignedTo ? 'Reassign Ticket' : 'Assign Ticket'}
             </button>
-            {ticket.status !== 'RESOLVED' && (
+            )}
+            {canAssignHere && ticket.status !== 'RESOLVED' && (
               <button className="btn-secondary btn-sm w-full" onClick={() => { setTargetDeptId(''); setTransferReason(''); setTransferModal(true); }}>
                 Transfer to another department…
               </button>

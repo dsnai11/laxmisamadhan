@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { canManageAssignment } from '@utils/assignmentRights';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -102,7 +103,7 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
   const isStaff = userRoles.some(r => STAFF_ROLES.includes(r));
   const sameDept = !!ticket && !!user?.departmentId && user.departmentId === ticket.departmentId;
   const isDeptHeadOrLead = userRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r));
-  const isManager = isAdmin || (isDeptHeadOrLead && sameDept);
+  const isManager = canManageAssignment(user, ticket); // who may assign / reassign / transfer this ticket
   const isAssignee = !!ticket && ticket.assignedToId === user?.id;
   const isRaiser = !!ticket && ticket.raisedById === user?.id;
   const canWork = isManager || isAssignee || (isStaff && sameDept);

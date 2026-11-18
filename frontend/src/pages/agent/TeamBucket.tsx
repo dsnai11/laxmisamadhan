@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { canManageAssignment } from '@utils/assignmentRights';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -55,7 +56,7 @@ export default function TeamBucket() {
     ? { id: 'all', name: 'All Teams', members: [] }
     : (displayTeams.find((t: any) => t.id === currentTeamId) || displayTeams[0] || { id: 'all', name: 'All Teams', members: [] });
 
-  const canReassign = isLeadership || (userRoles as string[]).includes('TEAM_LEAD') || myTeam?.leadId === user?.id;
+  const canReassign = canManageAssignment(user, undefined, myTeam?.leadId === user?.id); // Super Admin, Admin, Dept Head, Team Lead only
 
   const { data: bucketData, isLoading: bucketLoading, error: bucketError, refetch: refetchBucket } = useQuery({
     queryKey: ['team-bucket', departmentId, currentTeamId, page, status, priority, filterMember, search],

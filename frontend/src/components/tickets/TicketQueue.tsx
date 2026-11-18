@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { canManageAssignment } from '@utils/assignmentRights';
 import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
@@ -14,7 +15,7 @@ export default function TicketQueue({ basePath, title, subtitle }: { basePath: s
     ...(user?.role ? [user.role] : []),
     ...(user?.roles || [])
   ]));
-  const canAssign = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r));
+  const canAssign = canManageAssignment(user); // Super Admin, Admin, Dept Head, Team Lead only
 
   const claim = async (ticketId: string, refetch: () => void) => {
     if (!user) return;

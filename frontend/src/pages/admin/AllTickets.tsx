@@ -6,8 +6,9 @@ import api from '@services/api';
 import { formatDate, formatRelativeTime, humanize } from '@utils/helpers';
 import {
   PageHeader, PageLoader, ErrorState, EmptyState, StatusBadge, PriorityBadge, SLABadge,
-  Pagination, STATUS_OPTIONS, PRIORITY_OPTIONS, CATEGORY_OPTIONS, Modal, Field,
+  Pagination, STATUS_OPTIONS, PRIORITY_OPTIONS, CATEGORY_OPTIONS, Modal, Field, getErrorMessage,
 } from '@components/common/ui';
+import { useAuth } from '@context/AuthContext';
 import RequesterHoverCard from '@components/tickets/RequesterHoverCard';
 import InboundEmailSimulatorModal from '@components/email/InboundEmailSimulatorModal';
 import {
@@ -23,6 +24,7 @@ const TAB_FILTERS = [
 ];
 
 export default function AdminAllTickets() {
+  const { user: me } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState('pending');
@@ -84,29 +86,30 @@ export default function AdminAllTickets() {
   const toggleAll = () => setSelected(allSelected ? [] : tickets.map((t: any) => t.id));
   const toggleOne = (id: string) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
+  // Bulk assign the selected tickets. Each ticket is checked by the server on its own (only that
+  // department's team leads / head, or an admin, may assign; the assignee must be in the ticket's
+  // department), so report successes and the real reason for any that were refused.
+  const bulkAssign = async (assigneeId: string, verb: string) => {
+    const results = await Promise.allSettled(selected.map((id) => api.assignTicket(id, assigneeId)));
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (ok) toast.success(`${verb} ${ok} ticket(s)`);
+    if (failed.length) toast.error(`${failed.length} not ${verb.toLowerCase()}: ${getErrorMessage(failed[0].reason)}`, { duration: 6000 });
+    setSelected([]);
+    setAssigneeId('');
+    qc.invalidateQueries({ queryKey: ['admin-tickets'] });
+  };
+
+  // "Pick Up" = assign the selected tickets to yourself (previously it used the first user in a list).
   const handlePickUp = async () => {
     if (selected.length === 0) return toast.error('Select at least 1 ticket to Pick Up');
-    try {
-      await Promise.all(selected.map((id) => api.assignTicket(id, users[0]?.id || '')));
-      toast.success(`Picked up ${selected.length} ticket(s)`);
-      setSelected([]);
-      qc.invalidateQueries({ queryKey: ['admin-tickets'] });
-    } catch {
-      toast.error('Failed to pick up tickets');
-    }
+    if (!me?.id) return toast.error('Could not identify your account; please sign in again');
+    await bulkAssign(me.id, 'Picked up');
   };
 
   const handleQuickAssign = async (userId: string) => {
     if (!userId || selected.length === 0) return;
-    try {
-      await Promise.all(selected.map((id) => api.assignTicket(id, userId)));
-      toast.success(`Assigned ${selected.length} ticket(s)`);
-      setSelected([]);
-      setAssigneeId('');
-      qc.invalidateQueries({ queryKey: ['admin-tickets'] });
-    } catch {
-      toast.error('Assignment failed');
-    }
+    await bulkAssign(userId, 'Assigned');
   };
 
   const [showEmailSimulator, setShowEmailSimulator] = useState(false);
