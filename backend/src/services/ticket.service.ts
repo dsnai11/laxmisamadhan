@@ -350,7 +350,7 @@ class TicketService {
 
   async updateTicket(
     id: string,
-    data: Partial<CreateTicketData> & { departmentId?: string; transferReason?: string },
+    data: Partial<CreateTicketData> & { departmentId?: string; transferReason?: string; transferTeamId?: string; transferAssigneeId?: string },
     userId: string,
     userRole: UserRole,
     userRoles?: UserRole[]
@@ -372,6 +372,7 @@ class TicketService {
     const userDeptId = await this.getUserDepartmentId(userId);
     const actorRoles: UserRole[] = Array.from(new Set([...(userRole ? [userRole] : []), ...(userRoles || [])]));
     const isTransfer = !!data.departmentId && data.departmentId !== ticket.departmentId;
+    let transferTarget: { team: { id: string; name: string } | null; assignee: { id: string; name: string } | null } = { team: null, assignee: null };
 
     if (isTransfer) {
       const leadsTeamInDept = await prisma.team.count({ where: { departmentId: ticket.departmentId, leadId: userId } });
@@ -387,8 +388,11 @@ class TicketService {
           "Permission denied: only this department's Team Leads and Department Head (or an Admin) can transfer its tickets to another department"
         );
       }
-      const target = await prisma.department.findUnique({ where: { id: data.departmentId! }, select: { id: true } });
+      const target = await prisma.department.findUnique({ where: { id: data.departmentId! }, select: { id: true, headId: true } });
       if (!target) throw new AppError('Target department not found', 400, 'DEPARTMENT_NOT_FOUND');
+      transferTarget = await this.validateTransferTarget(target, data.transferTeamId, data.transferAssigneeId);
+    } else if (data.transferTeamId || data.transferAssigneeId) {
+      throw new AppError('A team or person can only be chosen when transferring to another department', 400, 'NOT_A_TRANSFER');
     } else if (!this.canModifyTicket(ticket, userId, userRole, userDeptId, userRoles)) {
       throw new AuthorizationError('Permission denied');
     }
@@ -397,7 +401,7 @@ class TicketService {
     const updates: Prisma.TicketUpdateInput = {};
 
     for (const [key, value] of Object.entries(data)) {
-      if (key === 'transferReason' || key === 'departmentId') continue;
+      if (key === 'transferReason' || key === 'departmentId' || key === 'transferTeamId' || key === 'transferAssigneeId') continue;
       if (value !== undefined && ticket[key as keyof typeof ticket] !== value) {
         oldValues[key] = ticket[key as keyof typeof ticket];
         updates[key as keyof Prisma.TicketUpdateInput] = value;
@@ -420,9 +424,15 @@ class TicketService {
     if (isTransfer) {
       // permission already checked above (canTransferTicket)
       updates.department = { connect: { id: data.departmentId } };
-      // Clear old assignment and team since they belong to the previous department
-      updates.assignedTo = { disconnect: true };
-      updates.team = { disconnect: true };
+      // Old assignment and team belong to the previous department: clear them, or set the
+      // team / person chosen in the target department.
+      updates.assignedTo = transferTarget.assignee ? { connect: { id: transferTarget.assignee.id } } : { disconnect: true };
+      updates.team = transferTarget.team ? { connect: { id: transferTarget.team.id } } : { disconnect: true };
+      if (transferTarget.team) updates.group = transferTarget.team.name;
+      if (transferTarget.assignee) {
+        updates.assignedBy = { connect: { id: userId } };
+        updates.assignedAt = new Date();
+      }
       oldValues['departmentId'] = ticket.departmentId;
       oldValues['assignedToId'] = ticket.assignedToId;
       oldValues['teamId'] = ticket.teamId;
@@ -490,7 +500,9 @@ class TicketService {
         data: {
           ticketId: id,
           userId,
-          content: `🔄 Department reassigned from ${oldDeptName} to ${newDeptName}${reasonStr}. Ticket unassigned and queued for ${newDeptName}.`,
+          content: transferTarget.assignee
+            ? `🔄 Department reassigned from ${oldDeptName} to ${newDeptName}${transferTarget.team ? ` / ${transferTarget.team.name}` : ''}${reasonStr}. Assigned to ${transferTarget.assignee.name}.`
+            : `🔄 Department reassigned from ${oldDeptName} to ${newDeptName}${transferTarget.team ? ` / ${transferTarget.team.name}` : ''}${reasonStr}. Ticket unassigned and queued for ${transferTarget.team ? transferTarget.team.name : newDeptName}.`,
           isInternal: true,
         },
       });
@@ -512,7 +524,31 @@ class TicketService {
           })
           .catch(() => undefined);
       }
-      if (newDept?.autoAssign) {
+      if (transferTarget.assignee) {
+        await prisma.ticketUpdate.create({
+          data: {
+            ticketId: updatedTicket.id,
+            userId,
+            field: 'assignedTo',
+            oldValue: ticket.assignedToId ? 'Previous department assignee' : 'Unassigned',
+            newValue: transferTarget.assignee.name,
+            isSystem: false,
+          },
+        }).catch(() => undefined);
+        if (transferTarget.assignee.id !== userId) {
+          await prisma.notification.create({
+            data: {
+              userId: transferTarget.assignee.id,
+              type: 'TICKET_ASSIGNED',
+              title: 'Ticket assigned to you',
+              message: `${updatedTicket.ticketNumber} was transferred from ${oldDeptName} and assigned to you.`,
+              referenceId: updatedTicket.id,
+              referenceType: 'TICKET',
+            },
+          }).catch(() => undefined);
+        }
+      } else if (newDept?.autoAssign) {
+        // Auto-assign picks from the chosen team first (ticket.teamId), else from the department.
         const assigned = await this.autoAssignTicket(updatedTicket.id, newDept.assignStrategy || 'round_robin').catch((e) => {
           logger.warn('Auto-assign after transfer failed', { ticketId: updatedTicket.id, error: e instanceof Error ? e.message : String(e) });
           return null;
@@ -1303,6 +1339,51 @@ class TicketService {
     if (ticket.department?.headId === userId) return true;
     if (allRoles.some(r => ['DEPARTMENT_HEAD', 'TEAM_LEAD'].includes(r)) && userDeptId && ticket.departmentId === userDeptId) return true;
     return false;
+  }
+
+  /**
+   * Checks the optional team / person chosen for a transfer: the team must belong to the target
+   * department; the person must be active staff in that team (or, without a team, in the department).
+   */
+  private async validateTransferTarget(
+    target: { id: string; headId: string | null },
+    teamId?: string,
+    assigneeId?: string
+  ): Promise<{ team: { id: string; name: string } | null; assignee: { id: string; name: string } | null }> {
+    let team: { id: string; name: string; leadId: string | null; members: { id: string }[] } | null = null;
+    if (teamId) {
+      team = await prisma.team.findFirst({
+        where: { id: teamId, departmentId: target.id },
+        select: { id: true, name: true, leadId: true, members: { select: { id: true } } },
+      });
+      if (!team) throw new AppError('The chosen team is not part of the target department', 400, 'TEAM_NOT_IN_DEPARTMENT');
+    }
+    let assignee: { id: string; name: string } | null = null;
+    if (assigneeId) {
+      const person = await prisma.user.findUnique({
+        where: { id: assigneeId },
+        select: { id: true, firstName: true, lastName: true, role: true, roles: true, status: true, departmentId: true },
+      });
+      if (!person) throw new AppError('The chosen person was not found', 400, 'ASSIGNEE_NOT_FOUND');
+      const roles = [person.role, ...(person.roles || [])];
+      if (person.status !== 'ACTIVE' || !roles.some((r) => STAFF_ROLES.includes(r))) {
+        throw new AppError('Tickets can only be assigned to active staff members', 400, 'ASSIGNEE_NOT_STAFF');
+      }
+      const inTeam = team ? team.leadId === person.id || team.members.some((m) => m.id === person.id) : false;
+      let inDept = person.departmentId === target.id || target.headId === person.id;
+      if (!inDept && !team) {
+        inDept = (await prisma.team.count({ where: { departmentId: target.id, OR: [{ leadId: person.id }, { members: { some: { id: person.id } } }] } })) > 0;
+      }
+      if (team ? !inTeam : !inDept) {
+        throw new AppError(
+          `${person.firstName} ${person.lastName} is not in the ${team ? `team ${team.name}` : 'target department'}`,
+          400,
+          'ASSIGNEE_NOT_IN_TARGET'
+        );
+      }
+      assignee = { id: person.id, name: `${person.firstName} ${person.lastName}`.trim() };
+    }
+    return { team: team ? { id: team.id, name: team.name } : null, assignee };
   }
 
   private getValidStatusTransitions(currentStatus: TicketStatus): TicketStatus[] {

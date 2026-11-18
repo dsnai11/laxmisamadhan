@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import TransferTicketDialog from '@components/tickets/TransferTicketDialog';
 import { canManageAssignment } from '@utils/assignmentRights';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -84,8 +85,6 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
   const [cancelOpen, setCancelOpen] = useState(false);
   const [assigneeId, setAssigneeId] = useState('');
   const [showAllActivity, setShowAllActivity] = useState(false);
-  const [targetDeptId, setTargetDeptId] = useState('');
-  const [transferReason, setTransferReason] = useState('');
   const [transferModalOpen, setTransferModalOpen] = useState(false);
 
   const { data: ticket, isLoading, error, refetch } = useQuery<any>({
@@ -505,32 +504,15 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
                       Wrong Dept?
                     </span>
                   </div>
-                  <div className="flex gap-2">
-                    <select
-                      className="input text-xs"
-                      value={targetDeptId}
-                      onChange={(e) => setTargetDeptId(e.target.value)}
-                    >
-                      <option value="">Select correct department...</option>
-                      {(departments || [])
-                        .filter((d: any) => d.id !== ticket.departmentId)
-                        .map((d: any) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="btn-secondary text-xs px-3 whitespace-nowrap"
-                      disabled={!targetDeptId || busy === 'transferDept'}
-                      onClick={() => setTransferModalOpen(true)}
-                    >
-                      Transfer
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs w-full"
+                    onClick={() => setTransferModalOpen(true)}
+                  >
+                    Transfer to another department…
+                  </button>
                   <p className="text-[11px] text-gray-500">
-                    If raised in the wrong department, transfer to the right team. Current assignee will be unassigned and SLA updated.
+                    If raised in the wrong department, forward it to the right department and team, and optionally a person. SLA is recalculated.
                   </p>
                 </div>
               )}
@@ -721,56 +703,12 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
         </Field>
       </Modal>
 
-      <Modal
+      <TransferTicketDialog
         open={transferModalOpen}
         onClose={() => setTransferModalOpen(false)}
-        title="Transfer ticket to another department"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => setTransferModalOpen(false)}>Cancel</button>
-            <button
-              className="btn-primary"
-              disabled={!targetDeptId || busy === 'transferDept'}
-              onClick={async () => {
-                const targetDept = (departments || []).find((d: any) => d.id === targetDeptId);
-                const ok = await run(
-                  'transferDept',
-                  () => api.updateTicket(ticket.id, { departmentId: targetDeptId, transferReason }),
-                  `Ticket transferred to ${targetDept?.name || 'new department'}`
-                );
-                if (ok) {
-                  setTransferModalOpen(false);
-                  setTargetDeptId('');
-                  setTransferReason('');
-                }
-              }}
-            >
-              {busy === 'transferDept' ? 'Transferring...' : 'Confirm Transfer'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            You are transferring ticket <strong className="text-gray-900 dark:text-white">#{ticket.ticketNumber}</strong> from{' '}
-            <strong className="text-gray-900 dark:text-white">{ticket.department?.name}</strong> to{' '}
-            <strong className="text-primary-600 dark:text-primary-400">
-              {(departments || []).find((d: any) => d.id === targetDeptId)?.name}
-            </strong>.
-          </p>
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md text-xs text-amber-800 dark:text-amber-300">
-            <strong>Note:</strong> The ticket will be unassigned from current staff, its SLA policy will recalculate for the new department, and an audit trail comment will be recorded.
-          </div>
-          <Field label="Transfer Reason (optional)" hint="e.g. Raised in IT instead of HR / Accounts">
-            <textarea
-              className="input min-h-[90px]"
-              placeholder="Why is this ticket being transferred?"
-              value={transferReason}
-              onChange={(e) => setTransferReason(e.target.value)}
-            />
-          </Field>
-        </div>
-      </Modal>
+        ticket={ticket}
+        onTransferred={() => { refreshAll(); }}
+      />
 
     </div>
   );

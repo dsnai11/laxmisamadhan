@@ -38,6 +38,9 @@ export const updateTicketSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   departmentId: z.string().uuid().optional(),
   transferReason: z.string().max(500).optional(),
+  // Transfer only: optional team in the target department and optional person in that team/department
+  transferTeamId: z.string().uuid().optional(),
+  transferAssigneeId: z.string().uuid().optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
   customFields: z.record(z.any()).optional(),
   assetIds: z.array(z.string().uuid()).optional(),

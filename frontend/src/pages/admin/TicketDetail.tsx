@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import TransferTicketDialog from '@components/tickets/TransferTicketDialog';
 import { canManageAssignment } from '@utils/assignmentRights';
 import { previousAssigneeBeforeResolution } from '@utils/ticketContacts';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -29,8 +30,6 @@ export default function AdminTicketDetail() {
   const [newAssignee, setNewAssignee] = useState('');
   const [newTeam, setNewTeam] = useState('');
   const [transferModal, setTransferModal] = useState(false);
-  const [targetDeptId, setTargetDeptId] = useState('');
-  const [transferReason, setTransferReason] = useState('');
   const [activeTab, setActiveTab] = useState<'comments' | 'history' | 'approvals' | 'sla'>('comments');
 
   const { data: ticketData, isLoading, error, refetch } = useQuery({
@@ -51,27 +50,6 @@ export default function AdminTicketDetail() {
     queryKey: ['dept-teams-assign', ticket?.departmentId],
     queryFn: () => api.getTeams(ticket?.departmentId),
     enabled: !!ticket?.departmentId && assignModal,
-  });
-
-  const { data: departments } = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => api.getDepartments(),
-    enabled: transferModal,
-  });
-
-  // Transfer (forward a wrongly raised ticket to the right department). The server allows Super Admin,
-  // Admin, and the ticket's department head / team leads (canTransferTicket); refusals come back as 403.
-  const transferMutation = useMutation({
-    mutationFn: () => api.updateTicket(ticket?.id || id!, { departmentId: targetDeptId, transferReason: transferReason.trim() || undefined } as any),
-    onSuccess: () => {
-      const name = ((departments as any[]) || []).find((d: any) => d.id === targetDeptId)?.name || 'the new department';
-      toast.success(`Ticket transferred to ${name}`);
-      setTransferModal(false);
-      setTargetDeptId('');
-      setTransferReason('');
-      qc.invalidateQueries({ queryKey: ['ticket', id] });
-    },
-    onError: (err: any) => toast.error(getErrorMessage(err)),
   });
 
   const commentMutation = useMutation({
@@ -285,7 +263,7 @@ export default function AdminTicketDetail() {
             </button>
             )}
             {canAssignHere && ticket.status !== 'RESOLVED' && (
-              <button className="btn-secondary btn-sm w-full" onClick={() => { setTargetDeptId(''); setTransferReason(''); setTransferModal(true); }}>
+              <button className="btn-secondary btn-sm w-full" onClick={() => setTransferModal(true)}>
                 Transfer to another department…
               </button>
             )}
@@ -459,36 +437,13 @@ export default function AdminTicketDetail() {
         </div>
       </Modal>
 
-      {/* Transfer Modal */}
-      <Modal open={transferModal} onClose={() => setTransferModal(false)} title="Transfer ticket to another department" footer={
-        <>
-          <button className="btn-secondary" onClick={() => setTransferModal(false)}>Cancel</button>
-          <button className="btn-primary" disabled={!targetDeptId || transferMutation.isPending} onClick={() => transferMutation.mutate()}>
-            {transferMutation.isPending ? 'Transferring…' : 'Transfer'}
-          </button>
-        </>
-      }>
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Currently in <span className="font-medium text-gray-900">{ticket.department?.name || 'this department'}</span>.
-            The current assignee and team will be cleared, the new department's head is notified, and the ticket is
-            auto-assigned there if that department has auto-assignment on.
-          </p>
-          <div>
-            <label className="label">Move to department</label>
-            <select className="input" value={targetDeptId} onChange={(e) => setTargetDeptId(e.target.value)}>
-              <option value="">Select the correct department…</option>
-              {((departments as any[]) || [])
-                .filter((d: any) => d.id !== ticket.departmentId)
-                .map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Reason (optional)</label>
-            <input className="input" placeholder="e.g. Raised in the wrong department" value={transferReason} onChange={(e) => setTransferReason(e.target.value)} />
-          </div>
-        </div>
-      </Modal>
+      {/* Transfer: department -> team -> person (optional) */}
+      <TransferTicketDialog
+        open={transferModal}
+        onClose={() => setTransferModal(false)}
+        ticket={ticket}
+        onTransferred={() => qc.invalidateQueries({ queryKey: ['ticket', id] })}
+      />
     </div>
   );
 }

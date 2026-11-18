@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const prismaMock = vi.hoisted(() => ({
   ticket: { findUnique: vi.fn(), update: vi.fn() },
   user: { findUnique: vi.fn() },
-  team: { count: vi.fn(), findMany: vi.fn() },
+  team: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  ticketUpdate: { create: vi.fn().mockResolvedValue({}) },
   department: { findUnique: vi.fn() },
   comment: { create: vi.fn().mockResolvedValue({}) },
   sLAPolicy: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
@@ -162,5 +163,79 @@ describe('transfer to another department (wrongly raised tickets)', () => {
   it('unknown target department is a clear 400', async () => {
     await expect(transfer('hari', ['TEAM_LEAD'], 'dept-missing')).rejects.toThrow(/Target department not found/);
     expect(prismaMock.ticket.update).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('transfer with team and (optional) person in the new department', () => {
+  const ticket = { id: 't3', ticketNumber: 'TKT-26-00082', departmentId: HW, raisedById: 'yusuf', assignedToId: 'asheesh', teamId: 'team-hw',
+    status: 'OPEN', resolvedAt: null, department: { id: HW, name: 'IT Hardware/Software', headId: 'sunil' }, priority: 'MEDIUM', category: 'SOFTWARE_REQUEST' };
+  const people: Record<string, any> = {
+    hari: { id: 'hari', firstName: 'Hari', lastName: 'Yadav', role: 'TEAM_LEAD', roles: [], status: 'ACTIVE', departmentId: HW },
+    asheesh: { id: 'asheesh', firstName: 'Asheesh', lastName: 'Gupta', role: 'AGENT', roles: [], status: 'ACTIVE', departmentId: HW },
+    ansul: { id: 'ansul', firstName: 'Ansul', lastName: 'Khandelwal', role: 'AGENT', roles: [], status: 'ACTIVE', departmentId: APP },
+    manish: { id: 'manish', firstName: 'Manish', lastName: 'Mishra', role: 'AGENT', roles: [], status: 'ACTIVE', departmentId: APP },
+  };
+  const crm = { id: 'team-crm', name: 'CRM Support', leadId: null, members: [{ id: 'ansul' }, { id: 'manish' }] };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.ticket.findUnique.mockResolvedValue(ticket);
+    prismaMock.user.findUnique.mockImplementation(({ where }: any) => Promise.resolve(people[where.id] || null));
+    prismaMock.team.count.mockResolvedValue(0);
+    prismaMock.team.findFirst.mockImplementation(({ where }: any) => Promise.resolve(where.id === 'team-crm' && where.departmentId === APP ? crm : null));
+    prismaMock.department.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.id === APP ? { id: APP, name: 'IT Application', headId: 'vinod', autoAssign: true, assignStrategy: 'round_robin' } : null));
+    prismaMock.ticket.update.mockImplementation(({ data }: any) => Promise.resolve({ ...ticket, departmentId: APP, department: { id: APP, name: 'IT Application' } }));
+    vi.spyOn(ticketService as any, 'sendTicketUpdatedNotifications').mockResolvedValue(undefined);
+    vi.spyOn(ticketService as any, 'autoAssignTicket').mockResolvedValue({ id: 't3', assignedToId: 'manish' });
+  });
+
+  const transfer = (extra: Record<string, any>, to = APP) =>
+    ticketService.updateTicket('t3', { departmentId: to, transferReason: 'Wrong department', ...extra } as any, 'hari', 'TEAM_LEAD' as any, ['TEAM_LEAD'] as any);
+
+  it('department + team + person: lands with that person in that team, no auto-assign', async () => {
+    await transfer({ transferTeamId: 'team-crm', transferAssigneeId: 'ansul' });
+    const data = prismaMock.ticket.update.mock.calls[0][0].data;
+    expect(data.department).toEqual({ connect: { id: APP } });
+    expect(data.team).toEqual({ connect: { id: 'team-crm' } });
+    expect(data.assignedTo).toEqual({ connect: { id: 'ansul' } });
+    expect(data.assignedBy).toEqual({ connect: { id: 'hari' } });
+    expect((ticketService as any).autoAssignTicket).not.toHaveBeenCalled();
+    expect(prismaMock.notification.create.mock.calls.some((c: any) => c[0].data.userId === 'ansul')).toBe(true);
+    expect(prismaMock.ticketUpdate.create.mock.calls[0][0].data).toMatchObject({ field: 'assignedTo', newValue: 'Ansul Khandelwal' });
+  });
+
+  it('department + team only: queued in the team and auto-assigned within it', async () => {
+    await transfer({ transferTeamId: 'team-crm' });
+    const data = prismaMock.ticket.update.mock.calls[0][0].data;
+    expect(data.team).toEqual({ connect: { id: 'team-crm' } });
+    expect(data.assignedTo).toEqual({ disconnect: true });
+    expect((ticketService as any).autoAssignTicket).toHaveBeenCalledWith('t3', 'round_robin');
+  });
+
+  it('a team from another department is refused', async () => {
+    await expect(transfer({ transferTeamId: 'team-hw' })).rejects.toThrow(/not part of the target department/);
+    expect(prismaMock.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it('a person who is not in the chosen team is refused', async () => {
+    await expect(transfer({ transferTeamId: 'team-crm', transferAssigneeId: 'asheesh' })).rejects.toThrow(/not in the team CRM Support/);
+    expect(prismaMock.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it('a person in the department but no team chosen is accepted; one from outside is refused', async () => {
+    await expect(transfer({ transferAssigneeId: 'manish' })).resolves.toBeTruthy();
+    vi.clearAllMocks();
+    prismaMock.ticket.findUnique.mockResolvedValue(ticket);
+    prismaMock.user.findUnique.mockImplementation(({ where }: any) => Promise.resolve(people[where.id] || null));
+    prismaMock.team.count.mockResolvedValue(0);
+    prismaMock.department.findUnique.mockImplementation(({ where }: any) => Promise.resolve(where.id === APP ? { id: APP, headId: 'vinod', autoAssign: true } : null));
+    await expect(transfer({ transferAssigneeId: 'asheesh' })).rejects.toThrow(/not in the target department/);
+  });
+
+  it('team / person without a department change is refused', async () => {
+    await expect(ticketService.updateTicket('t3', { transferTeamId: 'team-crm' } as any, 'hari', 'TEAM_LEAD' as any, ['TEAM_LEAD'] as any))
+      .rejects.toThrow(/only be chosen when transferring/);
   });
 });
