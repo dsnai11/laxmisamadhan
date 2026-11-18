@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { TicketPriority, TicketCategory, TicketStatus } from '@prisma/client';
 
+// Team IDs are usually UUIDs, but some teams were created by hand with readable IDs
+// (e.g. "team-hardware-support"), so don't require UUID format for them.
+export const teamIdSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/, 'Invalid team ID');
+
 export const ticketIdParamSchema = z.object({
   id: z.string({ required_error: 'Invalid ticket ID' }).trim().min(1, 'Invalid ticket ID').max(100, 'Invalid ticket ID').regex(/^[a-zA-Z0-9_-]+$/, 'Invalid ticket ID'),
 });
@@ -14,7 +18,7 @@ export const createTicketSchema = z.object({
   item: z.string().optional().nullable(),
   group: z.string().optional(),
   site: z.string().optional(),
-  teamId: z.string().uuid().optional(),
+  teamId: teamIdSchema.optional(),
   priority: z.nativeEnum(TicketPriority).default(TicketPriority.MEDIUM),
   departmentId: z.string().uuid('Invalid department ID'),
   tags: z.array(z.string().max(50)).max(10).optional(),
@@ -35,11 +39,11 @@ export const updateTicketSchema = z.object({
   priority: z.nativeEnum(TicketPriority).optional(),
   status: z.nativeEnum(TicketStatus).optional(),
   assignedToId: z.string().uuid().nullable().optional(),
-  teamId: z.string().uuid().nullable().optional(),
+  teamId: teamIdSchema.nullable().optional(),
   departmentId: z.string().uuid().optional(),
   transferReason: z.string().max(500).optional(),
   // Transfer only: optional team in the target department and optional person in that team/department
-  transferTeamId: z.string().uuid().optional(),
+  transferTeamId: teamIdSchema.optional(),
   transferAssigneeId: z.string().uuid().optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
   customFields: z.record(z.any()).optional(),
@@ -49,7 +53,7 @@ export const updateTicketSchema = z.object({
 
 export const assignTicketSchema = z.object({
   assignedToId: z.string().uuid('Invalid assignee ID'),
-  teamId: z.string().uuid().optional(),
+  teamId: teamIdSchema.optional(),
   note: z.string().max(1000).optional(),
 });
 
@@ -90,7 +94,7 @@ export const ticketQuerySchema = z.object({
   departmentId: z.string().uuid().optional(),
   assignedToId: z.string().uuid().optional(),
   raisedById: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
+  teamId: teamIdSchema.optional(),
   tags: z.array(z.string()).optional(),
   search: z.string().optional(),
   dateFrom: z.string().datetime().optional(),
