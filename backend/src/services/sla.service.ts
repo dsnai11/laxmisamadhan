@@ -3,6 +3,7 @@ import { createLogger } from '@utils/logger';
 import { logActivity } from '@middleware/audit.middleware';
 import { TicketPriority, TicketCategory, Prisma } from '@prisma/client';
 import { addMinutes, isBefore, isAfter } from 'date-fns';
+import { addWorkingMinutes, workingMinutesBetween } from '@utils/workingHours';
 import { NotFoundError } from '@middleware/error.middleware';
 import emailService from './email.service';
 import config from '@config/index';
@@ -44,8 +45,9 @@ interface SlaPauseTicket {
  * Global rule for all departments. Unit-tested in src/__tests__/sla_pause.test.ts.
  *  - entering a waiting status: remember when (slaPausedAt) and show PAUSED (a breach that already
  *    happened stays BREACHED);
- *  - leaving it: extend the resolution deadline (and the response deadline if nobody responded
- *    yet) by the paused time, clear slaPausedAt, and recompute the SLA state;
+ *  - leaving it: the resolution deadline (and the response deadline if nobody responded yet)
+ *    continues with the working time that was left (working calendar in utils/workingHours.ts),
+ *    clear slaPausedAt, and recompute the SLA state;
  *  - client -> vendor (or back) keeps the pause running.
  */
 export function slaPauseTransition(t: SlaPauseTicket, newStatus: string, now: Date = new Date()): Record<string, any> {
@@ -60,12 +62,17 @@ export function slaPauseTransition(t: SlaPauseTicket, newStatus: string, now: Da
   let responseDueAt = t.responseDueAt;
   let resolutionDueAt = t.resolutionDueAt;
   if (t.slaPausedAt) {
-    const pausedMs = Math.max(0, now.getTime() - new Date(t.slaPausedAt).getTime());
-    if (resolutionDueAt) resolutionDueAt = new Date(new Date(resolutionDueAt).getTime() + pausedMs);
-    if (responseDueAt && !t.respondedAt) responseDueAt = new Date(new Date(responseDueAt).getTime() + pausedMs);
+    // Continue with the WORKING time that was left when the pause started.
+    const pausedAt = new Date(t.slaPausedAt);
+    const resume = (due: Date | null) => {
+      if (!due || new Date(due) <= pausedAt) return due; // already overdue when paused: unchanged
+      return addWorkingMinutes(now, workingMinutesBetween(pausedAt, new Date(due)));
+    };
+    resolutionDueAt = resume(resolutionDueAt);
+    if (!t.respondedAt) responseDueAt = resume(responseDueAt);
     data.resolutionDueAt = resolutionDueAt;
     if (responseDueAt !== t.responseDueAt) data.responseDueAt = responseDueAt;
-    data.slaPausedTotalMins = { increment: Math.round(pausedMs / 60000) };
+    data.slaPausedTotalMins = { increment: workingMinutesBetween(pausedAt, now) };
   }
   if (t.slaStatus === 'BREACHED') return data; // breached before the pause: stays breached
   data.slaStatus = newStatus === 'RESOLVED'

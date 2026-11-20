@@ -30,15 +30,16 @@ describe('slaPauseTransition — SLA pauses while waiting on the client or vendo
     expect(SLA_PAUSE_STATUSES).toEqual(['DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR']);
   });
 
-  it('when the client replies, deadlines move later by the waiting time and the SLA is not breached', () => {
+  it('when the client replies, the clock continues with the WORKING time that was left (not breached)', () => {
+    // Paused 15:35 IST with the deadline at 22:30 IST -> 190 working minutes left (15:35–18:45).
     const paused = { ...t83, status: 'DEPENDENCY_ON_CLIENT', slaStatus: 'PAUSED', slaPausedAt: at('2026-11-18T10:05:00Z') };
-    const now = at('2026-11-19T06:05:00Z'); // waited 20 hours — past the original 17:00 deadline
+    const now = at('2026-11-19T06:05:00Z'); // 19 Nov 11:35 IST — past the original deadline
     const data = slaPauseTransition(paused, 'OPEN', now);
     expect(data.slaPausedAt).toBeNull();
-    expect(data.resolutionDueAt).toEqual(new Date(t83.resolutionDueAt.getTime() + 20 * H)); // 19 Nov 13:00 UTC
+    expect(data.resolutionDueAt).toEqual(at('2026-11-19T09:15:00Z')); // 11:35 + 190 working min = 14:45 IST
     expect(data.responseDueAt).toBeUndefined(); // already responded: response deadline untouched
     expect(data.slaStatus).toBe('WITHIN_SLA');
-    expect(data.slaPausedTotalMins).toEqual({ increment: 1200 });
+    expect(data.slaPausedTotalMins).toEqual({ increment: 300 }); // working minutes spent waiting
   });
 
   it('an unanswered ticket also gets its response deadline extended', () => {
@@ -79,13 +80,18 @@ describe('the SLA timer and escalation ignore waiting tickets', () => {
   });
 });
 
-describe('deptHeadGraceElapsed — team lead gets time before the department head', () => {
-  const escalatedToLead = at('2026-11-18T17:05:00Z');
-  it(`not after 10 minutes (the 13 Nov / 18 Nov behaviour)`, () => {
-    expect(deptHeadGraceElapsed(escalatedToLead, at('2026-11-18T17:15:00Z').getTime())).toBe(false);
+describe('deptHeadGraceElapsed — team lead gets 2 working hours before the department head', () => {
+  it('not after 10 minutes (the 13 Nov / 18 Nov behaviour)', () => {
+    const escalatedToLead = at('2026-11-18T06:00:00Z'); // 11:30 IST
+    expect(deptHeadGraceElapsed(escalatedToLead, at('2026-11-18T06:10:00Z').getTime())).toBe(false);
   });
-  it(`yes after ${DEPT_HEAD_GRACE_MINUTES} minutes`, () => {
-    expect(deptHeadGraceElapsed(escalatedToLead, escalatedToLead.getTime() + DEPT_HEAD_GRACE_MINUTES * 60 * 1000)).toBe(true);
+  it(`yes after ${DEPT_HEAD_GRACE_MINUTES} working minutes`, () => {
+    expect(deptHeadGraceElapsed(at('2026-11-18T06:00:00Z'), at('2026-11-18T08:00:00Z').getTime())).toBe(true); // 13:30 IST
+  });
+  it('escalated at night (22:35 IST): the grace counts from 09:45 next morning', () => {
+    const night = at('2026-11-18T17:05:00Z');
+    expect(deptHeadGraceElapsed(night, at('2026-11-19T04:50:00Z').getTime())).toBe(false); // 10:20 IST
+    expect(deptHeadGraceElapsed(night, at('2026-11-19T06:15:00Z').getTime())).toBe(true);  // 11:45 IST
   });
   it('no assignment time recorded -> no grace', () => {
     expect(deptHeadGraceElapsed(null)).toBe(true);

@@ -1,4 +1,5 @@
 import { prisma } from '@config/prisma';
+import { addWorkingMinutes } from '@utils/workingHours';
 import { slaPauseTransition } from './sla.service';
 import { createLogger } from '@utils/logger';
 import { logActivity } from '@middleware/audit.middleware';
@@ -1628,78 +1629,18 @@ class TicketService {
     return null;
   }
 
-  private addBusinessMinutes(startDate: Date, minutesToAdd: number, excludesWeekends = true, holidays: string[] = [], startHour = 9, endHour = 18): Date {
-    let current = new Date(startDate);
-    let remainingMinutes = minutesToAdd;
-
-    while (remainingMinutes > 0) {
-      const dayOfWeek = current.getDay(); // 0 = Sunday, 6 = Saturday
-      const dateNum = current.getDate();
-
-      // Sunday is always non-working
-      const isSunday = dayOfWeek === 0;
-
-      // 2nd Saturday of the month (date between 8 and 14)
-      const isSecondSaturday = dayOfWeek === 6 && dateNum >= 8 && dateNum <= 14;
-
-      // Check if current date is in holiday list (YYYY-MM-DD)
-      const dateStr = current.toISOString().slice(0, 10);
-      const isCustomHoliday = Array.isArray(holidays) && holidays.includes(dateStr);
-
-      const isNonWorkingDay = isSunday || isSecondSaturday || isCustomHoliday || (excludesWeekends && dayOfWeek === 6);
-
-      if (isNonWorkingDay) {
-        current.setDate(current.getDate() + 1);
-        current.setHours(startHour, 0, 0, 0);
-        continue;
-      }
-
-      const currentHour = current.getHours();
-      const currentMinute = current.getMinutes();
-
-      if (currentHour < startHour) {
-        current.setHours(startHour, 0, 0, 0);
-        continue;
-      }
-
-      if (currentHour >= endHour) {
-        current.setDate(current.getDate() + 1);
-        current.setHours(startHour, 0, 0, 0);
-        continue;
-      }
-
-      const minutesLeftInDay = (endHour - currentHour) * 60 - currentMinute;
-
-      if (remainingMinutes <= minutesLeftInDay) {
-        current = addMinutes(current, remainingMinutes);
-        remainingMinutes = 0;
-      } else {
-        remainingMinutes -= minutesLeftInDay;
-        current.setDate(current.getDate() + 1);
-        current.setHours(startHour, 0, 0, 0);
-      }
-    }
-
-    return current;
-  }
-
+  /**
+   * SLA deadlines on the LIFC working calendar (09:45–18:45 IST, Mon–Sat, no Sundays / 2nd
+   * Saturdays / listed holidays) for every policy — the clock doesn't run at night or on off days.
+   */
   private calculateSLATimes(slaPolicy: any): { responseDueAt: Date | null; resolutionDueAt: Date | null } {
     if (!slaPolicy) return { responseDueAt: null, resolutionDueAt: null };
-
     const now = new Date();
-    let responseDueAt: Date;
-    let resolutionDueAt: Date;
-    const holidays = slaPolicy.holidays || [];
-
-    if (slaPolicy.businessHoursOnly || slaPolicy.excludesWeekends) {
-      responseDueAt = this.addBusinessMinutes(now, slaPolicy.responseTimeMins, !!slaPolicy.excludesWeekends, holidays);
-      resolutionDueAt = this.addBusinessMinutes(now, slaPolicy.resolutionTimeMins, !!slaPolicy.excludesWeekends, holidays);
-    } else {
-      responseDueAt = addMinutes(now, slaPolicy.responseTimeMins);
-      resolutionDueAt = addMinutes(now, slaPolicy.resolutionTimeMins);
-    }
-
-    return { responseDueAt, resolutionDueAt };
+    const holidays: string[] = Array.isArray(slaPolicy.holidays) ? slaPolicy.holidays : [];
+    return {
+      responseDueAt: addWorkingMinutes(now, slaPolicy.responseTimeMins, holidays),
+      resolutionDueAt: addWorkingMinutes(now, slaPolicy.resolutionTimeMins, holidays),
+    };
   }
 
   private async createSLAEvents(ticketId: string, slaPolicy: any): Promise<void> {

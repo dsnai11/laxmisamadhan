@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ClockIcon, CheckCircleIcon, ExclamationTriangleIcon, ShieldExclamationIcon } from '@heroicons/react/24/outline';
+import { isWorkingTime, nextWorkingStart, workingMinutesBetween } from '@utils/workingHours';
 
 interface SLACountdownProps {
   responseDueAt?: string | null;
@@ -78,15 +79,26 @@ export default function SLACountdown({
 
   const isOverdue = !isResolved && now > dueMs;
 
-  const diffMs = Math.abs(dueMs - now);
+  // Working-time countdown (09:45–18:45 IST, Mon–Sat, no Sundays / 2nd Saturdays): the SLA clock
+  // doesn't run at night or on off days, so neither does this display.
+  const nowDate = new Date(now);
+  const clockRunning = isWorkingTime(nowDate);
+  const resumesAt = clockRunning ? null : nextWorkingStart(nowDate);
+  const workMs = isOverdue
+    ? workingMinutesBetween(new Date(dueMs), nowDate) * 60000
+    : workingMinutesBetween(nowDate, new Date(dueMs)) * 60000 - (clockRunning ? (now % 60000) : 0);
+  const diffMs = Math.max(0, workMs);
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+  const seconds = clockRunning ? Math.floor((diffMs % (1000 * 60)) / 1000) : 0;
 
   const formattedCountdown = `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
 
-  // Calculate SLA percentage progress (0 to 100%)
-  const percentage = isResolved ? 100 : Math.min(100, Math.round((elapsedMs / totalMs) * 100));
+  // SLA progress in working time (0 to 100%)
+  const totalWork = Math.max(1, workingMinutesBetween(new Date(createdMs), new Date(dueMs)));
+  const elapsedWork = workingMinutesBetween(new Date(createdMs), nowDate);
+  const percentage = isResolved ? 100 : Math.min(100, Math.round((elapsedWork / totalWork) * 100));
+  void totalMs; void elapsedMs;
 
   // Determine progress bar color
   let progressColor = 'bg-emerald-500';
@@ -145,6 +157,11 @@ export default function SLACountdown({
           </span>
         </div>
       )}
+      {!isResolved && resumesAt && (
+        <p className="text-[11px] text-gray-500">
+          ⏸ Clock stopped — outside working hours. Resumes {resumesAt.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}.
+        </p>
+      )}
 
       {/* SLA Progress Bar */}
       <div className="space-y-1">
@@ -165,7 +182,7 @@ export default function SLACountdown({
         <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
           <span>Schedule:</span>
           <span className="font-semibold text-gray-700">
-            {slaPolicy.businessHoursOnly ? '🏢 Business Hours (Excl. Sundays & 2nd Saturdays)' : '🌐 24/7 Support'}
+            🏢 Mon–Sat 9:45 AM–6:45 PM (excl. Sundays & 2nd Saturdays)
           </span>
         </div>
       )}

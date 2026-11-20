@@ -1,4 +1,5 @@
 import { prisma } from '@config/prisma';
+import { workingMinutesBetween } from '@utils/workingHours';
 import { createLogger } from '@utils/logger';
 import { TicketStatus, TicketPriority, NotificationType, SLAStatus } from '@prisma/client';
 import ticketService from './ticket.service';
@@ -23,7 +24,8 @@ export const DEPT_HEAD_GRACE_MINUTES = 120;
  */
 export function deptHeadGraceElapsed(assignedAt: Date | null | undefined, now: number = Date.now()): boolean {
   if (!assignedAt) return true;
-  return now - new Date(assignedAt).getTime() >= DEPT_HEAD_GRACE_MINUTES * 60 * 1000;
+  // Working time only (09:45–18:45 IST, Mon–Sat, no Sundays / 2nd Saturdays).
+  return workingMinutesBetween(new Date(assignedAt), new Date(now)) >= DEPT_HEAD_GRACE_MINUTES;
 }
 
 class EscalationService {
@@ -55,7 +57,8 @@ class EscalationService {
 
     for (const ticket of activeTickets) {
       const createdAtMs = ticket.createdAt.getTime();
-      const ageMinutes = (now - createdAtMs) / (60 * 1000);
+      // Working minutes only: tickets raised at night / on Sundays don't escalate before office hours.
+      const ageMinutes = workingMinutesBetween(new Date(createdAtMs), new Date(now));
 
       // Level 1 Escalation: Unassigned Ticket Timeout (> 30 Mins).
       // Fires once per ticket: the ESCALATED_L1 tag marks it as done so the
