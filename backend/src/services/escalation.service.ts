@@ -13,6 +13,19 @@ export interface EscalationResult {
   details: string[];
 }
 
+/** Time the team lead gets after an SLA escalation before it moves on to the department head. */
+export const DEPT_HEAD_GRACE_MINUTES = 120;
+
+/**
+ * May a breached ticket that is already with the team lead move on to the department head?
+ * Only after the team lead has had DEPT_HEAD_GRACE_MINUTES (measured from when it was assigned
+ * to them). Previously the next 10-minute run escalated it straight away. Tested in sla_pause.test.ts.
+ */
+export function deptHeadGraceElapsed(assignedAt: Date | null | undefined, now: number = Date.now()): boolean {
+  if (!assignedAt) return true;
+  return now - new Date(assignedAt).getTime() >= DEPT_HEAD_GRACE_MINUTES * 60 * 1000;
+}
+
 class EscalationService {
   /**
    * Evaluates all open tickets against multi-level escalation rules.
@@ -20,7 +33,8 @@ class EscalationService {
   async runEscalationCheck(): Promise<EscalationResult> {
     const activeTickets = await prisma.ticket.findMany({
       where: {
-        status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED, TicketStatus.DEPENDENCY_ON_CLIENT, TicketStatus.DEPENDENCY_ON_VENDOR] },
+        // Tickets waiting on the client/vendor have their SLA paused and are never escalated.
+        status: { in: [TicketStatus.OPEN, TicketStatus.REOPENED] },
       },
       include: {
         department: { include: { head: true, teams: { include: { lead: true } } } },
@@ -179,7 +193,11 @@ class EscalationService {
           }
         }
 
-        // Step 2: Escalate to Department Head if already with Team Lead (or if assignee is Team Lead)
+        // Step 2: Escalate to Department Head if already with Team Lead (or if assignee is Team Lead),
+        // but only after the team lead's grace period.
+        if (!isEscalatedToDeptHead && isEscalatedToLead && !deptHeadGraceElapsed(ticket.assignedAt, now)) {
+          continue;
+        }
         if (!isEscalatedToDeptHead) {
           let deptHeadId = ticket.department?.headId;
           let deptHeadUser = ticket.department?.head;

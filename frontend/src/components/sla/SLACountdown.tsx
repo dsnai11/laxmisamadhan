@@ -7,8 +7,12 @@ interface SLACountdownProps {
   respondedAt?: string | null;
   resolvedAt?: string | null;
   createdAt: string;
-  slaStatus: 'WITHIN_SLA' | 'APPROACHING_BREACH' | 'BREACHED' | string;
+  slaStatus: 'WITHIN_SLA' | 'APPROACHING_BREACH' | 'BREACHED' | 'PAUSED' | string;
   slaPolicy?: any;
+  /** When the SLA was paused (ticket waiting on client/vendor). */
+  slaPausedAt?: string | null;
+  /** Ticket status, used to say what it's waiting on. */
+  status?: string;
 }
 
 export default function SLACountdown({
@@ -19,6 +23,8 @@ export default function SLACountdown({
   createdAt,
   slaStatus,
   slaPolicy,
+  slaPausedAt,
+  status,
 }: SLACountdownProps) {
   const [now, setNow] = useState(Date.now());
 
@@ -39,6 +45,37 @@ export default function SLACountdown({
 
   const isResolved = !!resolvedAt;
   const isResponded = !!respondedAt;
+
+  // Paused while waiting on the client/vendor: the clock is frozen; the deadline moves later by the
+  // waiting time when the ticket resumes (backend slaPauseTransition).
+  if (slaStatus === 'PAUSED' && !isResolved) {
+    const pausedAtMs = slaPausedAt ? new Date(slaPausedAt).getTime() : now;
+    const leftMs = Math.max(0, dueMs - pausedAtMs);
+    const lh = Math.floor(leftMs / 3600000);
+    const lm = Math.floor((leftMs % 3600000) / 60000);
+    const waitingOn = status === 'DEPENDENCY_ON_VENDOR' ? 'vendor' : 'client';
+    return (
+      <div className="card p-4 space-y-2 border border-gray-200 bg-gray-50/60">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClockIcon className="h-5 w-5 text-gray-500" />
+            <span className="font-bold text-xs uppercase tracking-wider text-gray-800">
+              SLA Countdown ({slaPolicy?.name || 'Standard SLA'})
+            </span>
+          </div>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-800">Paused</span>
+        </div>
+        <p className="text-sm text-gray-700">
+          Waiting on the {waitingOn}{slaPausedAt ? ` since ${new Date(slaPausedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}.
+          The SLA clock is stopped.
+        </p>
+        <p className="text-xs text-gray-500">
+          Time left when paused: <span className="font-semibold text-gray-700 tabular-nums">{lh}h {String(lm).padStart(2, '0')}m</span>. It continues from there when the ticket is set back to Open.
+        </p>
+      </div>
+    );
+  }
+
   const isOverdue = !isResolved && now > dueMs;
 
   const diffMs = Math.abs(dueMs - now);

@@ -2,6 +2,7 @@ import { prisma } from '@config/prisma';
 import { createLogger } from '@utils/logger';
 import { logActivity } from '@middleware/audit.middleware';
 import emailService from './email.service';
+import { setTicketStatusWithSla } from './sla.service';
 import config from '@config/index';
 import { ApprovalStatus, TicketStatus, NotificationType, Prisma } from '@prisma/client';
 
@@ -54,10 +55,7 @@ class ApprovalService {
       },
     });
 
-    await prisma.ticket.update({
-      where: { id: data.ticketId },
-      data: { status: TicketStatus.DEPENDENCY_ON_CLIENT },
-    });
+    await setTicketStatusWithSla(data.ticketId, TicketStatus.DEPENDENCY_ON_CLIENT);
 
     await logActivity(requesterId, 'APPROVAL_REQUESTED', `Requested approval for ticket ${ticket.ticketNumber}`, data.ticketId, { 
       approvalId: approval.id,
@@ -273,16 +271,10 @@ class ApprovalService {
           config.frontendUrl
         ).catch(() => undefined);
       } else {
-        await prisma.ticket.update({
-          where: { id: approval.ticketId },
-          data: { status: TicketStatus.OPEN },
-        });
+        await setTicketStatusWithSla(approval.ticketId, TicketStatus.OPEN);
       }
     } else {
-      await prisma.ticket.update({
-        where: { id: approval.ticketId },
-        data: { status: TicketStatus.OPEN },
-      });
+      await setTicketStatusWithSla(approval.ticketId, TicketStatus.OPEN);
     }
 
     const notifyIds = new Set<string>([approval.requesterId, ticket.raisedById]);
@@ -337,10 +329,7 @@ class ApprovalService {
       data: { status: ApprovalStatus.REJECTED, response: 'Cancelled by user', respondedAt: new Date() },
     });
 
-    await prisma.ticket.update({
-      where: { id: approval.ticketId },
-      data: { status: TicketStatus.OPEN },
-    });
+    await setTicketStatusWithSla(approval.ticketId, TicketStatus.OPEN);
 
     await logActivity(userId, 'APPROVAL_CANCELLED', `Cancelled approval for ticket ${approval.ticket.ticketNumber}`, approval.ticketId, { approvalId });
   }
@@ -360,10 +349,7 @@ class ApprovalService {
         data: { status: ApprovalStatus.EXPIRED, response: 'Expired', respondedAt: new Date() },
       });
 
-      await prisma.ticket.update({
-        where: { id: approval.ticketId },
-        data: { status: TicketStatus.OPEN },
-      });
+      await setTicketStatusWithSla(approval.ticketId, TicketStatus.OPEN);
 
       await logActivity('system', 'APPROVAL_EXPIRED', `Approval expired for ticket ${approval.ticket.ticketNumber}`, approval.ticketId, { approvalId: approval.id });
     }

@@ -6,6 +6,7 @@ import wsService from './websocket.service';
 import ticketService from './ticket.service';
 import { TicketPriority, TicketStatus } from '@prisma/client';
 import { skipReason, extractTicketNumber, canReplyToTicket, guessCategory } from './inboundRules';
+import { setTicketStatusWithSla } from './sla.service';
 
 export interface InboundEmailPayload {
   fromEmail: string;
@@ -101,7 +102,7 @@ class InboundEmailService {
             data: { status: TicketStatus.REOPENED, reopenedCount: { increment: 1 }, resolvedAt: null },
           });
         } else if (existing.status === TicketStatus.DEPENDENCY_ON_CLIENT && raiser.id === existing.raisedById) {
-          await prisma.ticket.update({ where: { id: existing.id }, data: { status: TicketStatus.OPEN } });
+          await setTicketStatusWithSla(existing.id, TicketStatus.OPEN); // resumes the SLA clock
         }
         await logActivity(raiser.id, 'COMMENT_ADDED', `Replied via email to ${ticketNumber}`, existing.id);
         try { wsService.sendToTicket(existing.id, 'comment:created', comment); } catch (_) { /* best effort */ }

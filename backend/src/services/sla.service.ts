@@ -24,7 +24,55 @@ interface SLAPolicyData {
   escalationRules?: any[];
 }
 
-const ACTIVE_STATUSES = ['OPEN', 'REOPENED', 'DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'] as const;
+// SLA clock runs only in these statuses. While a ticket waits on the client or a vendor the
+// clock is PAUSED (applies to every department): see slaPauseTransition below.
+const ACTIVE_STATUSES = ['OPEN', 'REOPENED'] as const;
+export const SLA_PAUSE_STATUSES = ['DEPENDENCY_ON_CLIENT', 'DEPENDENCY_ON_VENDOR'];
+
+interface SlaPauseTicket {
+  status: string;
+  slaStatus: string;
+  slaPausedAt: Date | null;
+  respondedAt: Date | null;
+  responseDueAt: Date | null;
+  resolutionDueAt: Date | null;
+}
+
+/**
+ * Ticket fields to update when a ticket's status changes, so the SLA clock pauses while waiting on
+ * the client/vendor and resumes afterwards with the deadlines pushed back by the waiting time.
+ * Global rule for all departments. Unit-tested in src/__tests__/sla_pause.test.ts.
+ *  - entering a waiting status: remember when (slaPausedAt) and show PAUSED (a breach that already
+ *    happened stays BREACHED);
+ *  - leaving it: extend the resolution deadline (and the response deadline if nobody responded
+ *    yet) by the paused time, clear slaPausedAt, and recompute the SLA state;
+ *  - client -> vendor (or back) keeps the pause running.
+ */
+export function slaPauseTransition(t: SlaPauseTicket, newStatus: string, now: Date = new Date()): Record<string, any> {
+  const wasPaused = SLA_PAUSE_STATUSES.includes(t.status);
+  const willPause = SLA_PAUSE_STATUSES.includes(newStatus);
+  if (!wasPaused && willPause) {
+    return { slaPausedAt: now, ...(t.slaStatus === 'BREACHED' ? {} : { slaStatus: 'PAUSED' }) };
+  }
+  if (!wasPaused || willPause) return {};
+
+  const data: Record<string, any> = { slaPausedAt: null };
+  let responseDueAt = t.responseDueAt;
+  let resolutionDueAt = t.resolutionDueAt;
+  if (t.slaPausedAt) {
+    const pausedMs = Math.max(0, now.getTime() - new Date(t.slaPausedAt).getTime());
+    if (resolutionDueAt) resolutionDueAt = new Date(new Date(resolutionDueAt).getTime() + pausedMs);
+    if (responseDueAt && !t.respondedAt) responseDueAt = new Date(new Date(responseDueAt).getTime() + pausedMs);
+    data.resolutionDueAt = resolutionDueAt;
+    if (responseDueAt !== t.responseDueAt) data.responseDueAt = responseDueAt;
+    data.slaPausedTotalMins = { increment: Math.round(pausedMs / 60000) };
+  }
+  if (t.slaStatus === 'BREACHED') return data; // breached before the pause: stays breached
+  data.slaStatus = newStatus === 'RESOLVED'
+    ? 'WITHIN_SLA'
+    : slaStateAt({ respondedAt: t.respondedAt, responseDueAt, resolutionDueAt }, now);
+  return data;
+}
 
 /*
  * SLA breach rules (unit-tested in src/__tests__/sla_breach_rules.test.ts):
@@ -67,6 +115,22 @@ export function slaStateAt(
     (t.resolutionDueAt && t.resolutionDueAt <= addMinutes(now, 60))
   ) return 'APPROACHING_BREACH';
   return 'WITHIN_SLA';
+}
+
+/**
+ * Change a ticket's status and apply the SLA pause/resume rule. Use this for every status change
+ * that doesn't go through ticketService.updateStatus (approvals, email replies).
+ */
+export async function setTicketStatusWithSla(ticketId: string, status: string, extra: Record<string, any> = {}): Promise<void> {
+  const t = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { status: true, slaStatus: true, slaPausedAt: true, respondedAt: true, responseDueAt: true, resolutionDueAt: true },
+  });
+  if (!t) return;
+  await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { ...extra, status: status as any, ...slaPauseTransition(t as any, status) },
+  });
 }
 
 class SLAService {

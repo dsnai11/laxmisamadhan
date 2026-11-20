@@ -254,7 +254,8 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
 
   const isOverdue =
     ticket.slaStatus === 'BREACHED' ||
-    (ticket.resolutionDueAt &&
+    (ticket.slaStatus !== 'PAUSED' && // waiting on client/vendor: SLA paused, not overdue
+      ticket.resolutionDueAt &&
       !ticket.resolvedAt &&
       new Date(ticket.resolutionDueAt).getTime() < Date.now());
   const isTicketClosedOrResolved = ['RESOLVED', 'CLOSED', 'CANCELLED'].includes(ticket.status);
@@ -610,6 +611,8 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
             createdAt={ticket.createdAt}
             slaStatus={ticket.slaStatus}
             slaPolicy={ticket.slaPolicy}
+            slaPausedAt={ticket.slaPausedAt}
+            status={ticket.status}
           />
 
           {/* 3. Contact Cards */}

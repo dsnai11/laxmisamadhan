@@ -290,6 +290,8 @@ model Ticket {
   slaPolicyId     String?
   slaPolicy       SLAPolicy?    @relation(fields: [slaPolicyId], references: [id])
   slaStatus       SLAStatus     @default(WITHIN_SLA)
+  slaPausedAt     DateTime?     // set while waiting on client/vendor; deadlines are extended on resume
+  slaPausedTotalMins Int        @default(0)
   responseDueAt   DateTime?
   resolutionDueAt DateTime?
   respondedAt     DateTime?

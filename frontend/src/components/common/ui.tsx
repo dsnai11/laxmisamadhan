@@ -182,7 +182,9 @@ export function PriorityBadge({ priority }: { priority?: string }) {
 
 export function SLABadge({ status, isOverdue }: { status?: string; isOverdue?: boolean }) {
   if (!status && !isOverdue) return null;
-  const isBreachedOrOverdue = isOverdue || status === 'BREACHED';
+  // A paused SLA (ticket waiting on client/vendor) is never shown as overdue: its deadline moves
+  // later when the ticket resumes.
+  const isBreachedOrOverdue = status === 'BREACHED' || (isOverdue && status !== 'PAUSED');
   const effectiveStatus = isBreachedOrOverdue ? 'BREACHED' : status || 'WITHIN_SLA';
   const label = isBreachedOrOverdue ? 'Overdue' : humanize(effectiveStatus);
   return (

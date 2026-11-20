@@ -1,4 +1,5 @@
 import { prisma } from '@config/prisma';
+import { slaPauseTransition } from './sla.service';
 import { createLogger } from '@utils/logger';
 import { logActivity } from '@middleware/audit.middleware';
 import emailService from './email.service';
@@ -749,7 +750,8 @@ class TicketService {
     const historyRows: Prisma.TicketUpdateCreateWithoutTicketInput[] = [
       { field: 'status', oldValue: ticket.status, newValue: status, user: { connect: { id: userId } } },
     ];
-    const updateData: Prisma.TicketUpdateInput = { status };
+    // SLA pauses while waiting on client/vendor and resumes (deadlines extended) afterwards.
+    const updateData: Prisma.TicketUpdateInput = { status, ...slaPauseTransition(ticket as any, status) };
 
     // Resolution credit: record the resolver and, if a teammate resolved someone else's ticket,
     // reassign it to them.
