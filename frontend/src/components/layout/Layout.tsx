@@ -12,6 +12,7 @@ import NotificationDropdown from '@components/common/NotificationDropdown';
 import UserMenu from '@components/common/UserMenu';
 import MobileBottomNav from '@components/layout/MobileBottomNav';
 import { triggerHaptic } from '@utils/nativeApp';
+import { headerSearchTarget } from '@utils/ticketSearch';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: 'home', roles: ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'] },
@@ -407,15 +408,8 @@ export default function Layout() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const input = (e.currentTarget.elements.namedItem('headerSearch') as HTMLInputElement)?.value?.trim();
-                  if (!input) return;
-                  const isAgent = userRoles.some(r => ['AGENT', 'TEAM_LEAD'].includes(r));
-                  const isAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
-                  const target = isAdmin
-                    ? `/admin/tickets?search=${encodeURIComponent(input)}`
-                    : isAgent
-                    ? `/agent/my-assignments?search=${encodeURIComponent(input)}`
-                    : `/raiser/my-tickets?search=${encodeURIComponent(input)}`;
-                  navigate(target);
+                  const target = headerSearchTarget(input || '', userRoles);
+                  if (target) navigate(target);
                 }}
                 className="w-full relative"
               >

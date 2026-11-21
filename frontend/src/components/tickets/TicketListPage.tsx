@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { normalizeTicketSearch } from '@utils/ticketSearch';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import api from '@services/api';
 import { formatRelativeTime, humanize } from '@utils/helpers';
@@ -52,8 +53,13 @@ export default function TicketListPage({
   const urlStatus = urlParams.get('status') || '';
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  // ?search= comes from the header search bar.
+  const urlSearch = normalizeTicketSearch(urlParams.get('search'));
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const [search, setSearch] = useState(urlSearch);
+  useEffect(() => {
+    if (urlSearch) { setSearchInput(urlSearch); setSearch(urlSearch); setPage(1); }
+  }, [urlSearch]);
   const [status, setStatus] = useState(STATUS_OPTIONS.includes(urlStatus) ? urlStatus : initialStatus);
   const urlPriority = urlParams.get('priority') || '';
   const urlSla = urlParams.get('slaStatus') || '';
@@ -63,7 +69,7 @@ export default function TicketListPage({
 
   useEffect(() => {
     const t = setTimeout(() => {
-      setSearch(searchInput.trim());
+      setSearch(normalizeTicketSearch(searchInput));
       setPage(1);
     }, 350);
     return () => clearTimeout(t);

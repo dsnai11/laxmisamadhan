@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { normalizeTicketSearch, adminTabStatus } from '@utils/ticketSearch';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '@services/api';
@@ -29,7 +30,13 @@ export default function AdminAllTickets() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState('pending');
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  // ?search= comes from the header search bar.
+  const [urlParams] = useSearchParams();
+  const urlSearch = normalizeTicketSearch(urlParams.get('search'));
+  const [search, setSearch] = useState(urlSearch);
+  useEffect(() => {
+    if (urlSearch) { setSearch(urlSearch); setPage(1); }
+  }, [urlSearch]);
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const [category, setCategory] = useState('');
@@ -63,15 +70,17 @@ export default function AdminAllTickets() {
   const users: any[] = Array.isArray(rawUsers) ? rawUsers : Array.isArray((rawUsers as any)?.data) ? (rawUsers as any).data : Array.isArray((rawUsers as any)?.users) ? (rawUsers as any).users : [];
 
   const params: any = { page, limit: 20, sortBy, sortOrder };
-  if (search) params.search = search;
+  const searchQuery = normalizeTicketSearch(search);
+  if (searchQuery) params.search = searchQuery;
   if (status) params.status = status;
   if (priority) params.priority = priority;
   if (category) params.category = category;
   if (departmentId) params.departmentId = departmentId;
 
   // Filter based on activeTab
-  if (activeTab === 'open') params.status = 'OPEN';
-  if (activeTab === 'pending') params.status = 'DEPENDENCY_ON_CLIENT';
+  // While searching, the tab filter is ignored so any ticket can be found.
+  const tabStatus = adminTabStatus(activeTab, searchQuery);
+  if (tabStatus) params.status = tabStatus;
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-tickets', params],
