@@ -169,7 +169,7 @@ export default function RequesterHoverCard({ user, departmentName, triggerElemen
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="font-semibold text-blue-700 hover:text-blue-900 hover:underline uppercase text-xs"
+        className="font-semibold text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200 hover:underline uppercase text-xs"
       >
         {triggerElement || fullName}
       </button>
