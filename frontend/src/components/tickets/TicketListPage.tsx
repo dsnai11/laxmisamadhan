@@ -224,7 +224,7 @@ export default function TicketListPage({
                     return (
                     <tr key={t.id} className="cursor-pointer hover:bg-primary-50/30 dark:hover:bg-slate-800/60 transition-colors" onClick={() => navigate(`${basePath}/${t.id}`)}>
                       <td>
-                        <Link to={`${basePath}/${t.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline">
+                        <Link to={`${basePath}/${t.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline whitespace-nowrap">
                           {t.ticketNumber}
                         </Link>
                       </td>

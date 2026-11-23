@@ -377,7 +377,7 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
             <div className="divide-y divide-gray-100">
               {comments.length === 0 && <p className="p-4 text-sm text-gray-500">No messages yet.</p>}
               {comments.map((c) => (
-                <div key={c.id} className={`p-4 flex gap-3 ${c.isInternal ? 'bg-warning-50' : ''}`}>
+                <div key={c.id} className={`p-4 flex gap-3 ${c.isInternal ? 'bg-warning-50 dark:bg-amber-500/10' : ''}`}>
                   <Avatar firstName={c.user?.firstName} lastName={c.user?.lastName} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-sm">

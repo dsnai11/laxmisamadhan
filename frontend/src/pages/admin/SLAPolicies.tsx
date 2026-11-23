@@ -331,7 +331,7 @@ export default function AdminSLAPolicies() {
                       {p.escalationRules && p.escalationRules.length > 0 ? (
                         <div className="flex flex-col gap-1">
                           {p.escalationRules[0].escalateToUserId ? (
-                            <span className="inline-flex items-center gap-1 font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 w-fit">
+                            <span className="inline-flex items-center gap-1 font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 dark:text-amber-300 dark:bg-amber-500/10 dark:border-amber-500/30 w-fit">
                               ⚡ Reassign on breach
                             </span>
                           ) : (

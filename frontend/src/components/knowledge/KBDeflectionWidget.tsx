@@ -51,7 +51,7 @@ export default function KBDeflectionWidget({ title, category, departmentId }: KB
   };
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3 transition-all animate-fadeIn">
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/10 p-4 space-y-3 transition-all animate-fadeIn">
       <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
         <LightBulbIcon className="h-5 w-5 text-amber-600 shrink-0" />
         <span>Self-Service Helper: Did one of these solutions fix your issue?</span>

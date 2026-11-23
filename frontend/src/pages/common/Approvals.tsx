@@ -47,12 +47,12 @@ export default function ApprovalsPage({ ticketBase }: { ticketBase: string }) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <PageHeader title="Approvals" subtitle="Requests waiting for your decision" />
         {isAdmin && (
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-1 shadow-sm">
             <button
               onClick={() => setScope('mine')}
               className={cn(
                 'px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors',
-                scope === 'mine' ? 'bg-primary-600 text-white shadow' : 'text-gray-600 hover:text-gray-900'
+                scope === 'mine' ? 'bg-primary-600 text-white shadow' : "text-gray-600 hover:text-gray-900 dark:text-slate-300 dark:hover:text-white"
               )}
             >
               Assigned to Me
@@ -61,7 +61,7 @@ export default function ApprovalsPage({ ticketBase }: { ticketBase: string }) {
               onClick={() => setScope('all')}
               className={cn(
                 'px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors',
-                scope === 'all' ? 'bg-primary-600 text-white shadow' : 'text-gray-600 hover:text-gray-900'
+                scope === 'all' ? 'bg-primary-600 text-white shadow' : "text-gray-600 hover:text-gray-900 dark:text-slate-300 dark:hover:text-white"
               )}
             >
               All Org Approvals

@@ -210,7 +210,7 @@ export default function AdminUserDetail() {
       </div>
 
       {!editable && (
-        <div className="rounded-lg bg-warning-50 border border-warning-200 text-warning-800 text-sm px-4 py-3">
+        <div className="rounded-lg bg-warning-50 border border-warning-200 text-warning-800 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-200 text-sm px-4 py-3">
           {isSelf ? 'This is your own account. Edit your details from your profile page; role and status cannot be changed here.' : 'You do not have permission to edit this user.'}
         </div>
       )}

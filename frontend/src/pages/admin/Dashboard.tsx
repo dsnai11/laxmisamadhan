@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { TicketIcon, ClockIcon, CheckCircleIcon, ExclamationTriangleIcon, UsersIcon, BuildingOfficeIcon, ChartBarIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import api from '@services/api';
-import { formatRelativeTime, getPriorityColor, getStatusColor, cn } from '@utils/helpers';
+import { formatRelativeTime, getPriorityColor, getStatusColor, humanize, cn } from '@utils/helpers';
 
 const formatNumber = (num: number) => {
   return typeof num === 'number' ? num.toLocaleString() : '0';
@@ -63,9 +63,9 @@ export default function AdminDashboard() {
           const value = overview[card.key as keyof typeof overview] || 0;
           return (
             <Link key={card.name} to={card.href} className="card p-4 sm:p-6 hover:shadow-card-hover transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 truncate">{card.name}</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-slate-400 leading-tight">{card.name}</p>
                   <p className="mt-1 text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(value)}</p>
                 </div>
                 <div className={cn('p-2.5 sm:p-3 rounded-xl', card.color, 'text-white shrink-0')}>
@@ -88,8 +88,8 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               {stats?.charts?.byStatus?.map((item: any) => (
                 <div key={item.status} className="flex items-center gap-4">
-                  <span className={cn('badge w-32', getStatusColor(item.status))}>
-                    {item.status.replace('_', ' ')}
+                  <span className={cn("badge w-40 justify-center whitespace-nowrap", getStatusColor(item.status))}>
+                    {humanize(item.status)}
                   </span>
                   <div className="flex-1 h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div

@@ -331,7 +331,7 @@ export default function AdminAllTickets() {
         ) : (
           <div className="table-container">
             <table className="table text-xs">
-              <thead className="bg-blue-50/50 text-gray-700 font-bold border-b border-gray-200">
+              <thead className="bg-blue-50/50 text-gray-700 font-bold border-b border-gray-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
                 <tr>
                   <th className="w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} />
@@ -366,7 +366,7 @@ export default function AdminAllTickets() {
                         {t.title || 'Untitled Ticket'}
                       </Link>
                     </td>
-                    <td className="font-mono text-gray-600">{t.ticketNumber || 'INC-0000'}</td>
+                    <td className="font-mono text-gray-600 whitespace-nowrap">{t.ticketNumber || 'INC-0000'}</td>
                     <td className="font-medium text-gray-900 uppercase">
                       <RequesterHoverCard user={t.raisedBy} departmentName={t.department?.name} />
                     </td>

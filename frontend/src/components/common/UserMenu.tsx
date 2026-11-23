@@ -35,9 +35,9 @@ export default function UserMenu({ user, onLogout }: UserMenuProps) {
             {getInitials(firstName, lastName)}
           </span>
         </div>
-        <div className="hidden sm:block text-left">
+        <div className="hidden lg:block text-left max-w-[16rem]">
           <p className="text-sm font-medium text-gray-900 dark:text-white">{firstName} {lastName}</p>
-          <p className="text-xs text-gray-500 dark:text-slate-400 capitalize">{roleText}</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400 capitalize truncate">{roleText}</p>
         </div>
       </Menu.Button>
 

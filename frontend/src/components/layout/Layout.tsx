@@ -399,7 +399,10 @@ export default function Layout() {
                 </button>
               )}
               <img src="/logo.jpg" alt="Laxmi India Finance Ltd" className="h-8 w-8 rounded object-cover lg:hidden border border-gray-200 dark:border-slate-700 shrink-0" />
-              <h1 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-white truncate min-w-0">{portalName}</h1>
+              <h1 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-white truncate min-w-0">
+                <span className="lg:hidden">{portalName.split(' — ')[0]}</span>
+                <span className="hidden lg:inline">{portalName}</span>
+              </h1>
             </div>
 
             {/* Quick Header Search */}
@@ -465,7 +468,7 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden mobile-safe-bottom pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-8">
+        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-8">
           <Outlet />
         </main>
 

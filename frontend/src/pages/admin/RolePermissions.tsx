@@ -231,7 +231,7 @@ const ROLE_COLORS: Record<Role, string> = {
   TEAM_LEAD: '#059669',
   AGENT: '#d97706',
   RAISER: '#6b7280',
-  VIEWER: '#9ca3af',
+  VIEWER: '#475569',
 };
 
 function AccessCell({ level }: { level: AccessLevel }) {

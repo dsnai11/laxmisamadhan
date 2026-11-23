@@ -123,7 +123,7 @@ export default function DepartmentMailboxCard({ departmentId, supportEmail }: Pr
       </div>
 
       {!supportEmail && !username && (
-        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 dark:text-amber-300 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg px-3 py-2">
           Set the department's Inbound Support Email in Settings above first.
         </p>
       )}

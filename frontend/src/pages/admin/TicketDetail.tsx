@@ -144,7 +144,7 @@ export default function AdminTicketDetail() {
                     <p className="text-sm text-gray-500 text-center py-4">No comments yet.</p>
                   )}
                   {(ticket.comments || []).map((c: any) => (
-                    <div key={c.id} className={cn('flex gap-3', c.isInternal && 'bg-amber-50 rounded-lg p-3 -mx-1')}>
+                    <div key={c.id} className={cn('flex gap-3', c.isInternal && 'bg-amber-50 dark:bg-amber-500/10 rounded-lg p-3 -mx-1')}>
                       <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
                         {c.user?.firstName?.[0]}{c.user?.lastName?.[0]}
                       </div>
@@ -273,7 +273,7 @@ export default function AdminTicketDetail() {
                   type="button"
                   disabled={statusMutation.isPending}
                   onClick={() => api.updateTicketStatus(ticket.id, 'DEPENDENCY_ON_CLIENT').then(() => { toast.success('Status updated to Dependency on User'); qc.invalidateQueries({ queryKey: ['ticket', id] }); })}
-                  className="btn-secondary text-xs py-1.5 px-2 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-medium flex items-center justify-center gap-1 shadow-xs"
+                  className="btn-secondary text-xs py-1.5 px-2 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200 dark:border-amber-500/30 font-medium flex items-center justify-center gap-1 shadow-xs"
                 >
                   ⏳ Dep. on User
                 </button>
