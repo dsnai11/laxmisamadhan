@@ -53,6 +53,7 @@ export default function AdminUserDetail() {
     roles: string[];
     status: string;
     canViewTeamBucket: boolean;
+    canManageUsers: boolean;
   }>({
     email: '',
     firstName: '',
@@ -71,6 +72,7 @@ export default function AdminUserDetail() {
     roles: [],
     status: '',
     canViewTeamBucket: false,
+    canManageUsers: false,
   });
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -99,6 +101,7 @@ export default function AdminUserDetail() {
         roles: currentRoles,
         status: user.status,
         canViewTeamBucket: user.canViewTeamBucket || false,
+        canManageUsers: user.canManageUsers || false,
       });
     }
   }, [user]);
@@ -140,7 +143,7 @@ export default function AdminUserDetail() {
         state: form.state.trim() || null,
         reportingManagerName: form.reportingManagerName.trim() || null,
         departmentRaiserName: form.departmentRaiserName.trim() || null,
-        canViewTeamBucket: form.canViewTeamBucket,
+        ...(isSuperAdmin ? { canViewTeamBucket: form.canViewTeamBucket, canManageUsers: form.canManageUsers } : {}),
         ...(isOrgWide ? { departmentId: (form.departmentId || null) as any } : {}),
       } as any);
       const oldRoles = ((user.roles && user.roles.length > 0 ? user.roles : [user.role]) as string[]).slice().sort();
@@ -272,7 +275,7 @@ export default function AdminUserDetail() {
                       !editable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
                     } ${
                       checked
-                        ? 'bg-primary-50/90 border-primary-400 text-primary-900 shadow-xs dark:bg-primary-950/40 dark:border-primary-600'
+                        ? 'bg-primary-50/90 border-primary-400 text-primary-900 shadow-xs dark:bg-primary-950/40 dark:border-primary-600 dark:text-primary-100'
                         : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300'
                     }`}
                   >
@@ -302,7 +305,7 @@ export default function AdminUserDetail() {
           </Field>
         </div>
         <div className="md:col-span-2">
-          <Field label="Special Privileges / Permissions" hint={isSuperAdmin ? "Grant or revoke Team Bucket access for this user." : "Only a Super Admin can grant or revoke Team Bucket access."}>
+          <Field label="Special Privileges / Permissions" hint={isSuperAdmin ? "Grant or revoke special access for this user. Remember to click Save changes." : "Only a Super Admin can grant or revoke these."}>
             <label className={`flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/40 transition-colors ${editable && isSuperAdmin ? 'hover:bg-gray-100/60 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
               <input
                 type="checkbox"
@@ -322,6 +325,28 @@ export default function AdminUserDetail() {
                 </span>
                 <p className="text-xs text-gray-500 dark:text-slate-400">
                   Allow this user to access the Team Bucket and view tickets assigned to their team queue.
+                </p>
+              </div>
+            </label>
+            <label className={`mt-2 flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-900/40 transition-colors ${editable && isSuperAdmin ? 'hover:bg-gray-100/60 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
+              <input
+                type="checkbox"
+                disabled={!editable || !isSuperAdmin}
+                checked={form.canManageUsers}
+                onChange={(e) => setForm({ ...form, canManageUsers: e.target.checked })}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+              />
+              <div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  Manage Users (create &amp; delete user IDs)
+                  {form.canManageUsers ? (
+                    <span className="badge badge-success text-[10px] py-0 px-1.5">Granted</span>
+                  ) : (
+                    <span className="badge badge-gray text-[10px] py-0 px-1.5">Off</span>
+                  )}
+                </span>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Allow this user to create and delete Raiser, Agent and Viewer user IDs (never Team Lead, Department Head, Admin or Super Admin).
                 </p>
               </div>
             </label>
