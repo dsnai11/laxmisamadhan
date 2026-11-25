@@ -103,6 +103,11 @@ export function resolveAssignmentActor(
  * department's team leads (TEAM_LEAD role in the department, or lead of any team in it).
  * Agents, raisers and staff of other departments may not.
  */
+/** Who may delete a ticket attachment: Super Admin and Admin only. Tested in attachment_delete.test.ts. */
+export function canDeleteAttachment(roles: string[] | undefined | null): boolean {
+  return (roles || []).some((r) => r === 'SUPER_ADMIN' || r === 'ADMIN');
+}
+
 export function canReassignTicket(p: {
   actorId: string;
   actorRoles: string[];
@@ -1010,14 +1015,16 @@ class TicketService {
     return attachment;
   }
 
-  async deleteAttachment(ticketId: string, attachmentId: string, userId: string, userRole: UserRole): Promise<void> {
+  async deleteAttachment(ticketId: string, attachmentId: string, userId: string, userRoles: string[]): Promise<void> {
+    // Files are evidence for resolving the ticket: only Super Admin / Admin may remove one.
+    // Everyone else can add files but not delete them (not even their own).
+    if (!canDeleteAttachment(userRoles)) {
+      throw new Error('Permission denied: attachments cannot be deleted. Ask an Admin if a file must be removed.');
+    }
     const ticket = await prisma.ticket.findUnique({ where: this.resolveTicketWhere(ticketId) as any, select: { id: true } });
     const realTicketId = ticket?.id || ticketId;
     const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, ticketId: realTicketId } });
     if (!attachment) throw new Error('Attachment not found');
-    if (attachment.userId !== userId && !['SUPER_ADMIN', 'ADMIN'].includes(userRole)) {
-      throw new Error('Permission denied');
-    }
     await prisma.attachment.delete({ where: { id: attachmentId } });
     await fs.promises.unlink(attachment.path).catch(() => undefined);
     await logActivity(userId, 'ATTACHMENT_REMOVED', `Removed ${attachment.originalName}`, realTicketId, { attachmentId });

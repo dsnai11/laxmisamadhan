@@ -1,3 +1,4 @@
+import { canRemoveAttachment } from '@utils/attachmentRights';
 import { useRef, useState } from 'react';
 import TransferTicketDialog from '@components/tickets/TransferTicketDialog';
 import { canManageAssignment } from '@utils/assignmentRights';
@@ -352,7 +353,7 @@ export default function TicketDetailView({ backPath, backLabel }: { backPath: st
                           <span className="block text-xs text-gray-500">{formatFileSize(a.size)} · {fullName(a.user)} · {formatRelativeTime(a.createdAt)}</span>
                         </span>
                       </button>
-                      {(a.userId === user?.id || isAdmin) && (
+                      {canRemoveAttachment(userRoles) && (
                         <button
                           className="text-xs text-danger-600 hover:underline shrink-0"
                           onClick={() => run('att-' + a.id, () => api.deleteAttachment(ticket.id, a.id), 'Attachment removed')}

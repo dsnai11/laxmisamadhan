@@ -317,7 +317,12 @@ export const downloadAttachment = asyncHandler(async (req: AuthenticatedRequest,
 });
 
 export const deleteAttachment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  await ticketService.deleteAttachment(req.params.id, req.params.attachmentId, req.user!.userId, req.user!.role);
+  await ticketService.deleteAttachment(
+    req.params.id,
+    req.params.attachmentId,
+    req.user!.userId,
+    req.user!.roles && req.user!.roles.length > 0 ? req.user!.roles : [req.user!.role],
+  );
 
   res.json({
     success: true,
