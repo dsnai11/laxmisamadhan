@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
 import { formatRelativeTime, humanize, cn } from '@utils/helpers';
+import { BULK_CSV_TEMPLATE, parseBulkUsersCsv } from '@utils/bulkUsers';
 import {
   assignableRoles,
   Avatar,
@@ -35,7 +36,6 @@ interface BulkUserRow {
   employeeId: string;
   firstName: string;
   departmentName: string;
-  departmentRaiserName: string;
   designations: string;
   branch: string;
   state: string;
@@ -146,7 +146,6 @@ export default function AdminUsers() {
         employeeId: '1001',
         firstName: 'PUSHPENDRA PRATAP SINGH',
         departmentName: '',
-        departmentRaiserName: 'COLLECTION',
         designations: 'MANAGER',
         branch: 'ROSHAN TOWER JAIPUR HO',
         state: 'RAJASTHAN',
@@ -160,7 +159,6 @@ export default function AdminUsers() {
         employeeId: '1002',
         firstName: '',
         departmentName: '',
-        departmentRaiserName: '',
         designations: '',
         branch: '',
         state: '',
@@ -228,7 +226,6 @@ export default function AdminUsers() {
         employeeId: nextId,
         firstName: '',
         departmentName: bulkDefaultDept,
-        departmentRaiserName: '',
         designations: '',
         branch: '',
         state: '',
@@ -272,9 +269,7 @@ export default function AdminUsers() {
   };
 
   const downloadCSVTemplate = () => {
-    const csvHeader = 'employeeId,firstName,department name,department raiser name,desginations,BRANCH,STATE,MOBILE NO,Mail Id\n';
-    const sampleRows = `1001,PUSHPENDRA PRATAP SINGH,,COLLECTION,MANAGER,ROSHAN TOWER JAIPUR HO,RAJASTHAN,9799954635,pushpendra.gora@lifc.in\n1002,PRIYA VERMA,IT SUPPORT,VIKAS GUPTA,EXECUTIVE,MUMBAI HO,MAHARASHTRA,9876543211,priya.verma@lifc.in\n`;
-    const blob = new Blob([csvHeader + sampleRows], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([BULK_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -293,81 +288,14 @@ export default function AdminUsers() {
       const text = event.target?.result as string;
       if (!text) return;
 
-      const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-      if (lines.length < 2) {
-        toast.error('File is empty or missing headers');
+      const { rows, error } = parseBulkUsersCsv(text, { defaultRole: bulkDefaultRole, idPrefix, idStartNum });
+      if (error) {
+        toast.error(error);
         return;
       }
 
-      const delimiter = lines[0].includes('\t') ? '\t' : ',';
-      const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/[\s_-]+/g, ''));
-
-      const findCol = (...aliases: string[]) => {
-        for (const alias of aliases) {
-          const norm = alias.toLowerCase().replace(/[\s_-]+/g, '');
-          const idx = headers.indexOf(norm);
-          if (idx !== -1) return idx;
-        }
-        return -1;
-      };
-
-      const idIdx = findCol('employeeid', 'employee', 'empid', 'id', 'emplo', 'code');
-      const fnIdx = findCol('firstname', 'name', 'fullname', 'first_name', 'employeename');
-      const deptIdx = findCol('departmentname', 'department', 'deptname', 'dept');
-      const raiserIdx = findCol('departmentraisername', 'departmentraiser', 'raisername', 'raiser');
-      const desigIdx = findCol('desginations', 'designations', 'designation', 'jobtitle', 'title');
-      const branchIdx = findCol('branch', 'branchname', 'site', 'location');
-      const stateIdx = findCol('state', 'region');
-      const phoneIdx = findCol('mobileno', 'mobile', 'phone', 'phonenumber');
-      const emailIdx = findCol('mailid', 'mail_id', 'email', 'emailaddress', 'mail');
-      const roleIdx = findCol('role', 'userrole');
-      const passIdx = findCol('temporarypassword', 'temppassword', 'password', 'pass');
-
-      const usePositional = emailIdx === -1 && fnIdx === -1;
-
-      const parsedRows: BulkUserRow[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const rawLine = lines[i];
-        const cols = rawLine.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ''));
-        if (cols.length < 2) continue;
-
-        const employeeId = (usePositional ? cols[0] : idIdx !== -1 ? cols[idIdx] : '') || `${idPrefix}${idStartNum + i - 1}`;
-        const firstName = usePositional ? cols[1] : (fnIdx !== -1 ? cols[fnIdx] : '');
-        const departmentName = (usePositional ? cols[2] : (deptIdx !== -1 ? cols[deptIdx] : '')) || '';
-        const departmentRaiserName = usePositional ? cols[3] : (raiserIdx !== -1 ? cols[raiserIdx] : '');
-        const designations = usePositional ? cols[4] : (desigIdx !== -1 ? cols[desigIdx] : '');
-        const branch = usePositional ? cols[5] : (branchIdx !== -1 ? cols[branchIdx] : '');
-        const state = usePositional ? cols[6] : (stateIdx !== -1 ? cols[stateIdx] : '');
-        const phone = usePositional ? cols[7] : (phoneIdx !== -1 ? cols[phoneIdx] : '');
-        const email = usePositional ? cols[8] : (emailIdx !== -1 ? cols[emailIdx] : '');
-        const roleVal = roleIdx !== -1 && cols[roleIdx] ? cols[roleIdx] : bulkDefaultRole;
-        const temporaryPassword = (passIdx !== -1 && cols[passIdx] ? cols[passIdx] : '') || 'LaxmiUser@123';
-
-        if (!email && !firstName) continue;
-
-        parsedRows.push({
-          id: Math.random().toString(36).substring(2, 9),
-          employeeId: employeeId || '',
-          firstName: firstName || '',
-          departmentName: departmentName || '',
-          departmentRaiserName: departmentRaiserName || '',
-          designations: designations || '',
-          branch: branch || '',
-          state: state || '',
-          phone: phone || '',
-          email: email || '',
-          role: roleVal ? roleVal.toUpperCase().replace(/\s+/g, '_') : bulkDefaultRole,
-          temporaryPassword,
-        });
-      }
-
-      if (parsedRows.length === 0) {
-        toast.error('No valid user data found in file');
-        return;
-      }
-
-      setBulkRows(parsedRows);
-      toast.success(`Loaded ${parsedRows.length} users successfully`);
+      setBulkRows(rows.map((r) => ({ ...r, id: Math.random().toString(36).substring(2, 9) })));
+      toast.success(`Loaded ${rows.length} users successfully`);
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -402,7 +330,6 @@ export default function AdminUsers() {
         employeeId: r.employeeId?.trim() || undefined,
         firstName: r.firstName.trim(),
         departmentName: r.departmentName?.trim() || undefined,
-        departmentRaiserName: r.departmentRaiserName?.trim() || undefined,
         designations: r.designations?.trim() || undefined,
         branch: r.branch?.trim() || undefined,
         state: r.state?.trim() || undefined,
@@ -852,7 +779,6 @@ export default function AdminUsers() {
                   <th className="p-2 w-28">Employee ID</th>
                   <th className="p-2 w-36">First Name *</th>
                   <th className="p-2 w-32">Department Name</th>
-                  <th className="p-2 w-36">Department Raiser Name</th>
                   <th className="p-2 w-28">Designations</th>
                   <th className="p-2 w-36">Branch</th>
                   <th className="p-2 w-28">State</th>
@@ -890,14 +816,6 @@ export default function AdminUsers() {
                         placeholder="e.g. COLLECTION"
                         value={row.departmentName}
                         onChange={(e) => updateBulkRow(row.id, 'departmentName', e.target.value)}
-                      />
-                    </td>
-                    <td className="p-1">
-                      <input
-                        className="w-full input text-xs py-1 px-2"
-                        placeholder="e.g. COLLECTION"
-                        value={row.departmentRaiserName}
-                        onChange={(e) => updateBulkRow(row.id, 'departmentRaiserName', e.target.value)}
                       />
                     </td>
                     <td className="p-1">
