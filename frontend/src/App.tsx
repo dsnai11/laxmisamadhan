@@ -45,6 +45,7 @@ import AgentTicketDetail from '@pages/agent/TicketDetail';
 import AgentMyAssignments from '@pages/agent/MyAssignments';
 import AgentKnowledgeBase from '@pages/agent/KnowledgeBase';
 import AgentTeamBucket from '@pages/agent/TeamBucket';
+import { canOpenUsersPage } from '@utils/userManagement';
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { isAuthenticated, isLoading, user, hasRole } = useAuth();
@@ -70,6 +71,14 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
     return <Navigate to="/unauthorized" replace />;
   }
 
+  return <>{children}</>;
+}
+
+/** The Users page outside the admin area: only for holders of the "Manage users" right. */
+function ManageUsersRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!canOpenUsersPage(user as any)) return <Navigate to="/unauthorized" replace />;
   return <>{children}</>;
 }
 
@@ -203,6 +212,7 @@ function AppRoutes() {
         <Route path="tickets/:id" element={<RaiserTicketDetail />} />
         <Route path="knowledge" element={<RaiserKnowledgeBase />} />
         <Route path="profile" element={<RaiserProfile />} />
+        <Route path="users" element={<ManageUsersRoute><AdminUsers /></ManageUsersRoute>} />
       </Route>
 
       {/* Agent routes */}
@@ -221,6 +231,7 @@ function AppRoutes() {
         <Route path="approvals" element={<ApprovalsPage ticketBase="/agent/tickets" />} />
         <Route path="sla" element={<AdminSLAPolicies />} />
         <Route path="knowledge" element={<AgentKnowledgeBase />} />
+        <Route path="users" element={<ManageUsersRoute><AdminUsers /></ManageUsersRoute>} />
       </Route>
 
       {/* Main redirect based on role */}

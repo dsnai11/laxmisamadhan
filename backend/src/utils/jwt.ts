@@ -10,6 +10,7 @@ export interface JWTPayload {
   status: UserStatus;
   departmentId?: string;
   canViewTeamBucket?: boolean;
+  canManageUsers?: boolean;
   permissions: string[];
   sessionId: string;
 }

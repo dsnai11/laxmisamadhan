@@ -46,6 +46,7 @@ export interface LoginResult {
     mfaEnabled: boolean;
     avatar: string | null;
     canViewTeamBucket?: boolean;
+    canManageUsers?: boolean;
     mustResetPassword?: boolean;
   };
   tokens: {
@@ -207,6 +208,7 @@ class AuthService {
       status: user.status,
       departmentId: user.departmentId || undefined,
       canViewTeamBucket: user.canViewTeamBucket || false,
+      canManageUsers: user.canManageUsers || false,
       permissions,
       sessionId: session.id,
     });
@@ -230,6 +232,7 @@ class AuthService {
         status: user.status,
         departmentId: user.departmentId,
         canViewTeamBucket: user.canViewTeamBucket || false,
+        canManageUsers: user.canManageUsers || false,
         mfaEnabled: user.mfaEnabled,
         avatar: user.avatar,
         mustResetPassword: user.mustResetPassword || false,
@@ -271,6 +274,7 @@ class AuthService {
       status: user.status,
       departmentId: user.departmentId,
       canViewTeamBucket: user.canViewTeamBucket || false,
+      canManageUsers: user.canManageUsers || false,
       mfaEnabled: user.mfaEnabled,
       avatar: user.avatar,
       permissions,

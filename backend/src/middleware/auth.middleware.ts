@@ -63,6 +63,7 @@ export const authenticate = async (
         departmentId: true,
         mfaEnabled: true,
         canViewTeamBucket: true,
+        canManageUsers: true,
         mustResetPassword: true,
       },
     });
@@ -111,6 +112,7 @@ export const authenticate = async (
       status: user.status,
       departmentId: user.departmentId || undefined,
       canViewTeamBucket: user.canViewTeamBucket || false,
+      canManageUsers: user.canManageUsers || false,
       permissions,
     };
     req.sessionId = session.id;
@@ -166,6 +168,7 @@ export const optionalAuth = async (
         status: true,
         departmentId: true,
         canViewTeamBucket: true,
+        canManageUsers: true,
       },
     });
 
@@ -180,6 +183,7 @@ export const optionalAuth = async (
         status: user.status,
         departmentId: user.departmentId || undefined,
         canViewTeamBucket: user.canViewTeamBucket || false,
+        canManageUsers: user.canManageUsers || false,
         permissions,
       };
       req.sessionId = session.id;
@@ -334,4 +338,18 @@ export default {
   requireDepartmentAccess,
   requireOwnershipOrAdmin,
   apiKeyAuth,
+};
+/** Like requireRole, but a user holding the named per-user right (e.g. canManageUsers) is also let in. */
+export const requireRoleOrRight = (allowedRoles: string[], right: 'canManageUsers' | 'canViewTeamBucket') => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Authentication required', code: 'UNAUTHORIZED' });
+      return;
+    }
+    const userRoles: string[] = req.user.roles && req.user.roles.length > 0 ? req.user.roles : [req.user.role];
+    if (userRoles.includes('SUPER_ADMIN') || allowedRoles.some((r) => userRoles.includes(r)) || req.user[right] === true) {
+      return next();
+    }
+    res.status(403).json({ success: false, error: 'Insufficient permissions', code: 'FORBIDDEN' });
+  };
 };

@@ -19,6 +19,7 @@ export interface User {
   departmentId?: string;
   department?: Department;
   canViewTeamBucket?: boolean;
+  canManageUsers?: boolean;
   managerId?: string;
   mfaEnabled: boolean;
   emailVerified: boolean;

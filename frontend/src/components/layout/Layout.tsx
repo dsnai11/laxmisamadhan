@@ -39,6 +39,7 @@ const raiserNavigation = [
   { name: 'My Tickets', href: '/raiser/my-tickets', icon: 'ticket', roles: ['RAISER', 'VIEWER', 'AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Knowledge Base', href: '/raiser/knowledge', icon: 'book', roles: ['RAISER', 'VIEWER', 'AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Profile', href: '/raiser/profile', icon: 'user', roles: ['RAISER', 'VIEWER', 'AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
+  { name: 'Users', href: '/raiser/users', icon: 'users', roles: ['RAISER', 'VIEWER', 'AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 
 const agentNavigation = [
@@ -53,14 +54,17 @@ const agentNavigation = [
   { name: 'Approvals', href: '/agent/approvals', icon: 'check', roles: ['TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'SLA Policies', href: '/agent/sla', icon: 'clock', roles: ['TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
   { name: 'Knowledge Base', href: '/agent/knowledge', icon: 'book', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
+  { name: 'Users', href: '/agent/users', icon: 'users', roles: ['AGENT', 'TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN'] },
 ];
 
 
-function getNavigation(userRoles: string[], canViewTeamBucket?: boolean) {
+function getNavigation(userRoles: string[], canViewTeamBucket?: boolean, canManageUsers?: boolean) {
   const isAdmin = userRoles.some(r => ['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'].includes(r));
   const isAgent = userRoles.some(r => ['AGENT', 'TEAM_LEAD'].includes(r));
   const list = isAdmin ? navigation : isAgent ? agentNavigation : raiserNavigation;
   return list.filter((item) => {
+    // The Users page outside the admin area is only for holders of the "Manage users" right.
+    if (item.href === '/agent/users' || item.href === '/raiser/users') return Boolean(canManageUsers);
     if (item.href === '/agent/team-bucket') {
       const isSuperAdmin = userRoles.includes('SUPER_ADMIN');
       return isSuperAdmin || Boolean(canViewTeamBucket);
@@ -97,7 +101,7 @@ export default function Layout() {
   const { isDarkMode, toggleTheme } = useTheme();
 
   const userRoles = user?.roles && user.roles.length > 0 ? (user.roles as string[]) : [user?.role || ''];
-  const navItems = getNavigation(userRoles, user?.canViewTeamBucket);
+  const navItems = getNavigation(userRoles, user?.canViewTeamBucket, user?.canManageUsers);
   const portalName = getPortalName(userRoles);
 
   const rootPaths = [

@@ -63,6 +63,7 @@ export const updateUserSchema = z.object({
   status: z.nativeEnum(UserStatus).optional(),
   departmentId: z.string().uuid().nullable().optional(),
   canViewTeamBucket: z.boolean().optional(),
+  canManageUsers: z.boolean().optional(),
   managerId: z.string().uuid().nullable().optional(),
   avatar: z.string().url().nullable().optional(),
 });

@@ -6,6 +6,7 @@ import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
 import { formatRelativeTime, humanize, cn } from '@utils/helpers';
 import { BULK_CSV_TEMPLATE, parseBulkUsersCsv } from '@utils/bulkUsers';
+import { canDeleteUserAccount, creatableRoles, hasManageUsersRight } from '@utils/userManagement';
 import {
   assignableRoles,
   Avatar,
@@ -54,7 +55,8 @@ export default function AdminUsers() {
   ]));
   const isSuperAdmin = myRoles.includes('SUPER_ADMIN');
   const isOrgWide = isSuperAdmin || myRoles.includes('ADMIN');
-  const roles = isSuperAdmin ? ROLE_OPTIONS : assignableRoles(me?.role);
+  const hasUserRight = hasManageUsersRight(me as any);
+  const roles = isSuperAdmin ? ROLE_OPTIONS : creatableRoles(assignableRoles(me?.role), me as any, ROLE_OPTIONS);
 
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
@@ -64,6 +66,7 @@ export default function AdminUsers() {
   const [departmentId, setDepartmentId] = useState('');
   const [teamBucketFilter, setTeamBucketFilter] = useState('');
   const [togglingBucketId, setTogglingBucketId] = useState<string | null>(null);
+  const [togglingMgmtId, setTogglingMgmtId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -122,6 +125,25 @@ export default function AdminUsers() {
       toast.error(err?.response?.data?.error || 'Failed to update Team Bucket access');
     } finally {
       setTogglingBucketId(null);
+    }
+  };
+
+  const toggleManageUsers = async (targetUser: any) => {
+    if (!isSuperAdmin || togglingMgmtId) return;
+    setTogglingMgmtId(targetUser.id);
+    const nextVal = !targetUser.canManageUsers;
+    try {
+      await api.updateUser(targetUser.id, { canManageUsers: nextVal });
+      toast.success(
+        nextVal
+          ? `${targetUser.firstName} ${targetUser.lastName} can now create and delete user IDs`
+          : `Manage Users right revoked for ${targetUser.firstName} ${targetUser.lastName}`
+      );
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to update the Manage Users right');
+    } finally {
+      setTogglingMgmtId(null);
     }
   };
 
@@ -377,7 +399,7 @@ export default function AdminUsers() {
     <div className="space-y-6">
       <PageHeader
         title="Users"
-        subtitle={isOrgWide ? 'Manage accounts, roles and access' : 'Manage people in your department'}
+        subtitle={isOrgWide ? 'Manage accounts, roles and access' : hasUserRight ? 'Create and remove Raiser, Agent and Viewer user IDs' : 'Manage people in your department'}
         actions={
           <div className="flex gap-2">
             <button className="btn-secondary" onClick={openBulk}>
@@ -429,6 +451,7 @@ export default function AdminUsers() {
                     <th>Role</th>
                     <th>Department</th>
                     <th>Team Bucket Access</th>
+                    <th>Manage Users Right</th>
                     <th>Status</th>
                     <th>Last login</th>
                     <th className="text-right">Actions</th>
@@ -518,10 +541,47 @@ export default function AdminUsers() {
                           </span>
                         )}
                       </td>
+                      {/* Manage Users right (create + delete user IDs): Super Admin grants it */}
+                      <td>
+                        {u.role === 'SUPER_ADMIN' || (u.roles && u.roles.includes('SUPER_ADMIN')) ? (
+                          <span className="text-xs text-gray-400 italic">Always</span>
+                        ) : isSuperAdmin ? (
+                          <button
+                            type="button"
+                            disabled={togglingMgmtId === u.id}
+                            onClick={() => toggleManageUsers(u)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all border shadow-xs cursor-pointer',
+                              u.canManageUsers
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                            )}
+                            title={u.canManageUsers ? 'Click to revoke: this person can no longer create or delete user IDs' : 'Click to let this person create and delete Raiser, Agent and Viewer IDs'}
+                          >
+                            {togglingMgmtId === u.id ? (
+                              <span className="inline-block animate-spin">⏳</span>
+                            ) : (
+                              <>
+                                <span className={cn('h-1.5 w-1.5 rounded-full', u.canManageUsers ? 'bg-emerald-500' : 'bg-gray-400')}></span>
+                                <span>{u.canManageUsers ? 'Granted (Click to Revoke)' : 'Off (Click to Grant)'}</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
+                            u.canManageUsers
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              : 'bg-gray-50 text-gray-400 border-gray-200 dark:bg-slate-800 dark:text-slate-500'
+                          )}>
+                            {u.canManageUsers ? 'Granted' : 'Off'}
+                          </span>
+                        )}
+                      </td>
                       <td><span className={`badge ${statusBadge[u.status] || 'badge-gray'}`}>{humanize(u.status)}</span></td>
                       <td className="text-sm text-gray-500">{u.lastLoginAt ? formatRelativeTime(u.lastLoginAt) : 'Never'}</td>
                       <td className="text-right whitespace-nowrap">
-                        {u.id !== me?.id ? (
+                        {canDeleteUserAccount(me as any, u) ? (
                           <button
                             type="button"
                             onClick={() => setDeletingUser(u)}
@@ -533,8 +593,10 @@ export default function AdminUsers() {
                             </svg>
                             Delete
                           </button>
-                        ) : (
+                        ) : u.id === me?.id ? (
                           <span className="text-xs text-gray-400 italic">Current User</span>
+                        ) : (
+                          <span className="text-xs text-gray-300 dark:text-slate-600">—</span>
                         )}
                       </td>
                     </tr>

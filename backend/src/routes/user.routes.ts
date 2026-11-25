@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRole } from '@middleware/auth.middleware';
+import { authenticate, requireRole, requireRoleOrRight } from '@middleware/auth.middleware';
 import { validateBody, validateQuery, validateParams } from '@middleware/validation.middleware';
 import * as userController from '@controllers/user.controller';
 import * as validators from '@validators/user.validator';
@@ -7,7 +7,7 @@ import * as validators from '@validators/user.validator';
 const router = Router();
 
 router.use(authenticate);
-router.use(requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'));
+router.use(requireRoleOrRight(['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD', 'TEAM_LEAD'], 'canManageUsers'));
 
 router.get('/', validateQuery(validators.userQuerySchema), userController.getUsers);
 router.get('/stats', userController.getUserStats);
@@ -17,7 +17,7 @@ router.get('/profile', userController.getProfile);
 router.patch('/profile', validateBody(validators.updateProfileSchema), userController.updateProfile);
 
 router.post('/', validateBody(validators.createUserSchema), userController.createUser);
-router.post('/bulk-create', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.bulkCreateUserSchema), userController.bulkCreateUsers);
+router.post('/bulk-create', requireRoleOrRight(['SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'], 'canManageUsers'), validateBody(validators.bulkCreateUserSchema), userController.bulkCreateUsers);
 router.post('/bulk', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.bulkUserActionSchema), userController.bulkUserAction);
 
 router.get('/:id', userController.getUserById);
@@ -25,6 +25,6 @@ router.patch('/:id', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), val
 router.patch('/:id/role', requireRole('SUPER_ADMIN'), validateBody(validators.updateUserRoleSchema), userController.updateUserRole);
 router.post('/:id/reset-password', requireRole('SUPER_ADMIN', 'ADMIN'), validateBody(validators.adminResetPasswordSchema), userController.resetUserPassword);
 router.patch('/:id/status', requireRole('SUPER_ADMIN', 'ADMIN', 'DEPARTMENT_HEAD'), validateBody(validators.updateUserStatusSchema), userController.updateUserStatus);
-router.delete('/:id', requireRole('SUPER_ADMIN', 'ADMIN'), userController.deleteUser);
+router.delete('/:id', requireRoleOrRight(['SUPER_ADMIN', 'ADMIN'], 'canManageUsers'), userController.deleteUser);
 
 export default router;

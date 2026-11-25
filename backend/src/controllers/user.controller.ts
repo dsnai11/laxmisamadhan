@@ -4,20 +4,21 @@ import { AppError } from '@middleware/error.middleware';
 import userService from '@services/user.service';
 import { AuthenticatedRequest } from '@middleware/auth.middleware';
 import { UserRole, UserStatus } from '@prisma/client';
-import { assertCanAssignRole, assertCanManageUser, isOrgWide, Actor } from '@utils/userAccess';
+import { assertCanAssignRole, assertCanManageUser, assertCanDeleteUser, hasUserMgmtRight, isOrgWide, Actor } from '@utils/userAccess';
 
 const actorOf = (req: AuthenticatedRequest): Actor => ({
   userId: req.user!.userId,
   role: req.user!.role,
   roles: req.user!.roles,
   departmentId: req.user!.departmentId,
+  canManageUsers: req.user!.canManageUsers,
 });
 
 export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const actor = actorOf(req);
   const targetRoles = req.body.roles && req.body.roles.length > 0 ? req.body.roles : [req.body.role || 'RAISER'];
   assertCanAssignRole(actor, targetRoles);
-  if (!isOrgWide(actor)) {
+  if (!isOrgWide(actor) && !hasUserMgmtRight(actor)) {
     if (!actor.departmentId) throw new AppError('You are not assigned to a department', 403, 'FORBIDDEN');
     req.body.departmentId = actor.departmentId;
   }
@@ -37,7 +38,7 @@ export const bulkCreateUsers = asyncHandler(async (req: AuthenticatedRequest, re
   for (const u of users) {
     const targetRoles = u.roles && u.roles.length > 0 ? u.roles : [u.role || 'RAISER'];
     assertCanAssignRole(actor, targetRoles);
-    if (!isOrgWide(actor)) {
+    if (!isOrgWide(actor) && !hasUserMgmtRight(actor)) {
       if (!actor.departmentId) throw new AppError('You are not assigned to a department', 403, 'FORBIDDEN');
       u.departmentId = actor.departmentId;
     }
@@ -61,7 +62,7 @@ export const getUsers = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     search: req.query.search as string,
     role: req.query.role as UserRole,
     status: req.query.status as UserStatus,
-    departmentId: isOrgWide(actorOf(req)) ? (req.query.departmentId as string) : (req.user!.departmentId || 'none'),
+    departmentId: (isOrgWide(actorOf(req)) || hasUserMgmtRight(actorOf(req))) ? (req.query.departmentId as string) : (req.user!.departmentId || 'none'),
     managerId: req.query.managerId as string,
     canViewTeamBucket: req.query.canViewTeamBucket === 'true'
       ? true
@@ -102,6 +103,12 @@ export const updateUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
     const isSuperAdmin = actor.role === 'SUPER_ADMIN' || (actor.roles && actor.roles.includes('SUPER_ADMIN'));
     if (!isSuperAdmin) {
       throw new AppError('Only Super Admin can grant or revoke Team Bucket access', 403, 'FORBIDDEN');
+    }
+  }
+  if (req.body.canManageUsers !== undefined) {
+    const isSuperAdmin = actor.role === 'SUPER_ADMIN' || (actor.roles && actor.roles.includes('SUPER_ADMIN'));
+    if (!isSuperAdmin) {
+      throw new AppError('Only Super Admin can grant or revoke the Manage Users right', 403, 'FORBIDDEN');
     }
   }
   const user = await userService.updateUser(req.params.id, req.body, req.user!.userId);
@@ -153,7 +160,7 @@ export const resetUserPassword = asyncHandler(async (req: AuthenticatedRequest, 
 });
 
 export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  await assertCanManageUser(actorOf(req), req.params.id);
+  await assertCanDeleteUser(actorOf(req), req.params.id);
   await userService.deleteUser(req.params.id, req.user!.userId);
 
   res.json({

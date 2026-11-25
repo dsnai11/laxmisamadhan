@@ -29,6 +29,7 @@ interface CreateUserData {
   status?: UserStatus;
   departmentId?: string;
   canViewTeamBucket?: boolean;
+  canManageUsers?: boolean;
   managerId?: string;
   sendWelcomeEmail?: boolean;
   temporaryPassword?: string;
@@ -52,6 +53,7 @@ interface UpdateUserData {
   status?: UserStatus;
   departmentId?: string | null;
   canViewTeamBucket?: boolean;
+  canManageUsers?: boolean;
   managerId?: string | null;
   avatar?: string | null;
 }
@@ -197,6 +199,7 @@ class UserService {
         status: true,
         departmentId: true,
         canViewTeamBucket: true,
+        canManageUsers: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -302,6 +305,7 @@ class UserService {
           status: true,
           departmentId: true,
           canViewTeamBucket: true,
+          canManageUsers: true,
           managerId: true,
           avatar: true,
           mfaEnabled: true,
@@ -345,6 +349,7 @@ class UserService {
         status: true,
         departmentId: true,
         canViewTeamBucket: true,
+        canManageUsers: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,
@@ -448,6 +453,7 @@ class UserService {
         status: true,
         departmentId: true,
         canViewTeamBucket: true,
+        canManageUsers: true,
         managerId: true,
         avatar: true,
         mfaEnabled: true,

@@ -132,6 +132,7 @@ model User {
   departmentId      String?
   mustResetPassword Boolean   @default(false)
   canViewTeamBucket Boolean   @default(false)
+  canManageUsers    Boolean   @default(false)
   department        Department? @relation("UserDepartment", fields: [departmentId], references: [id])
   managerId         String?
   manager           User?     @relation("UserManager", fields: [managerId], references: [id])
