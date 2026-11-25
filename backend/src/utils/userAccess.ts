@@ -21,7 +21,7 @@ export const RANK: Record<string, number> = {
   VIEWER: 10,
 };
 
-/** Roles a holder of the "Manage users" right may create and delete. Never Team Lead, Department Head, Admin or Super Admin. */
+/** Roles a holder of the "Manage users" right may create, edit, activate/deactivate and delete. Never Team Lead, Department Head, Admin or Super Admin. */
 export const MANAGED_BY_RIGHT_ROLES = ['RAISER', 'AGENT', 'VIEWER'];
 
 export function hasUserMgmtRight(actor: Actor): boolean {
@@ -86,6 +86,10 @@ export async function assertCanManageUser(actor: Actor, targetId: string, opts: 
   const targetRoles = target.roles && target.roles.length > 0 ? target.roles : [target.role];
   const targetRank = Math.max(...targetRoles.map((r) => RANK[r] ?? 0), 0);
   const actorRank = getEffectiveRank(actor);
+
+  // The "Manage users" right covers viewing, editing and activating/deactivating Raiser / Agent /
+  // Viewer accounts in any department (not senior accounts: those fall through to the normal rules).
+  if (hasUserMgmtRight(actor) && targetRoles.every((r) => MANAGED_BY_RIGHT_ROLES.includes(r))) return;
 
   if (targetRank >= actorRank) {
     throw forbidden('You cannot manage a user with an equal or higher role');

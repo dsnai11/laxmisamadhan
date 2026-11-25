@@ -6,7 +6,7 @@ import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
 import { formatRelativeTime, humanize, cn } from '@utils/helpers';
 import { BULK_CSV_TEMPLATE, parseBulkUsersCsv } from '@utils/bulkUsers';
-import { canDeleteUserAccount, creatableRoles, hasManageUsersRight } from '@utils/userManagement';
+import { canDeleteUserAccount, canEditUserAccount, creatableRoles, hasManageUsersRight, usersPageHref } from '@utils/userManagement';
 import {
   assignableRoles,
   Avatar,
@@ -399,7 +399,7 @@ export default function AdminUsers() {
     <div className="space-y-6">
       <PageHeader
         title="Users"
-        subtitle={isOrgWide ? 'Manage accounts, roles and access' : hasUserRight ? 'Create and remove Raiser, Agent and Viewer user IDs' : 'Manage people in your department'}
+        subtitle={isOrgWide ? 'Manage accounts, roles and access' : hasUserRight ? 'Create, edit, deactivate and remove Raiser, Agent and Viewer user IDs' : 'Manage people in your department'}
         actions={
           <div className="flex gap-2">
             <button className="btn-secondary" onClick={openBulk}>
@@ -461,7 +461,7 @@ export default function AdminUsers() {
                   {users.map((u) => (
                     <tr key={u.id} className="hover:bg-gray-50/80 transition-colors">
                       <td>
-                        <Link to={`/admin/users/${u.id}`} className="flex items-center gap-3 hover:text-primary-700">
+                        <Link to={`${usersPageHref(myRoles)}/${u.id}`} className={cn('flex items-center gap-3 hover:text-primary-700', !canEditUserAccount(me as any, u) && 'pointer-events-none')}>
                           <Avatar firstName={u.firstName} lastName={u.lastName} />
                           <span>
                             <span className="flex items-center gap-2 font-medium text-gray-900">

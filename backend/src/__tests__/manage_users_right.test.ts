@@ -97,3 +97,35 @@ describe('requireRoleOrRight — route gate', () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 });
+
+import { assertCanManageUser } from '../utils/userAccess';
+
+describe('the "Manage users" right — viewing, editing, activating/deactivating', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('a holder can manage Raiser / Agent / Viewer accounts in ANY department', async () => {
+    for (const role of ['RAISER', 'AGENT', 'VIEWER']) {
+      prismaMock.user.findUnique.mockResolvedValue({ role, roles: [role], departmentId: 'other-dept' });
+      await expect(assertCanManageUser({ ...agentWithRight, role: 'RAISER', roles: ['RAISER'] }, 'target')).resolves.toBeUndefined();
+    }
+  });
+  it('a holder can NOT manage Team Lead, Department Head, Admin or Super Admin accounts', async () => {
+    for (const role of ['TEAM_LEAD', 'DEPARTMENT_HEAD', 'ADMIN', 'SUPER_ADMIN']) {
+      prismaMock.user.findUnique.mockResolvedValue({ role, roles: [role], departmentId: 'd1' });
+      await expect(assertCanManageUser(agentWithRight, 'target')).rejects.toThrow(/equal or higher/);
+    }
+  });
+  it('a user holding a senior role as well is protected by it', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'TEAM_LEAD', roles: ['AGENT', 'TEAM_LEAD'], departmentId: 'd1' });
+    await expect(assertCanManageUser(agentWithRight, 'target')).rejects.toThrow();
+  });
+  it('without the right an agent still cannot manage anyone', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'RAISER', roles: ['RAISER'], departmentId: 'd1' });
+    await expect(assertCanManageUser(agentWithout, 'target')).resolves.toBeUndefined(); // same department, lower rank: unchanged old rule
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'RAISER', roles: ['RAISER'], departmentId: 'elsewhere' });
+    await expect(assertCanManageUser(agentWithout, 'target')).rejects.toThrow(/own department/);
+  });
+  it('a holder still cannot act on their own account unless the action allows it', async () => {
+    await expect(assertCanManageUser(agentWithRight, 'hr1')).rejects.toThrow(/own account/);
+  });
+});

@@ -1,3 +1,4 @@
+import { canDeleteUserAccount, canEditUserAccount, creatableRoles, hasManageUsersRight, usersPageHref } from '@utils/userManagement';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -114,9 +115,12 @@ export default function AdminUserDetail() {
   const myMaxRank = Math.max(...myRoles.map(r => ROLE_RANK[r] ?? 0), 0);
   const targetRank = Math.max(...targetRoles.map(r => ROLE_RANK[r] ?? 0), 0);
   const sameDept = !user.departmentId || !me?.departmentId || user.departmentId === me?.departmentId;
-  const editable = isSuperAdmin || (!isSelf && myMaxRank > targetRank && (isOrgWide || sameDept));
-  const canDelete = !isSelf && (isSuperAdmin || (myMaxRank > targetRank && myMaxRank >= 70 && (isOrgWide || sameDept)));
-  const roles = isSuperAdmin ? ROLE_OPTIONS : Array.from(new Set([...assignableRoles(me?.role), user.role]));
+  // Holders of the "Manage users" right may edit / deactivate / delete Raiser, Agent and Viewer accounts.
+  const heldRightOverTarget = hasManageUsersRight(me as any) && !isSelf && canEditUserAccount(me as any, user) && canDeleteUserAccount(me as any, user);
+  const editable = isSuperAdmin || heldRightOverTarget || (!isSelf && myMaxRank > targetRank && (isOrgWide || sameDept));
+  const canDelete = !isSelf && (isSuperAdmin || canDeleteUserAccount(me as any, user) || (myMaxRank > targetRank && myMaxRank >= 70 && (isOrgWide || sameDept)));
+  const usersBase = usersPageHref(myRoles);
+  const roles = isSuperAdmin ? ROLE_OPTIONS : creatableRoles(Array.from(new Set([...assignableRoles(me?.role), user.role])), me as any, ROLE_OPTIONS);
 
   const save = async () => {
     if (!form.email || !form.email.includes('@')) {
@@ -183,7 +187,7 @@ export default function AdminUserDetail() {
       await api.deleteUser(user.id);
       toast.success('User deleted');
       await qc.invalidateQueries();
-      navigate('/admin/users');
+      navigate(usersBase);
     } catch (e) {
       toast.error(getErrorMessage(e));
       setDeleting(false);
@@ -193,7 +197,7 @@ export default function AdminUserDetail() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <Link to="/admin/users" className="text-sm text-primary-600 hover:underline">← Users</Link>
+        <Link to={usersBase} className="text-sm text-primary-600 hover:underline">← Users</Link>
         <div className="mt-3 flex items-center gap-4">
           <Avatar firstName={user.firstName} lastName={user.lastName} size={14} />
           <div>
@@ -364,7 +368,7 @@ export default function AdminUserDetail() {
         <div><span className="text-gray-500">Account created</span><p>{formatDate(user.createdAt, 'datetime')}</p></div>
       </div>
 
-      {editable && (
+      {editable && isOrgWide && (
         <div className="card p-6 space-y-3">
           <h2 className="font-semibold text-gray-900">Reset password</h2>
           <p className="text-sm text-gray-600">Set a new password for this user. They are signed out everywhere and should change it after signing in. Use at least 12 characters with upper and lower case letters, a number and a symbol.</p>

@@ -1,4 +1,4 @@
-// The "Manage users" right: a Super-Admin-granted switch on a user that lets them create and delete
+// The "Manage users" right: a Super-Admin-granted switch on a user that lets them create, edit, activate/deactivate and delete
 // Raiser / Agent / Viewer IDs (never Team Lead, Department Head, Admin or Super Admin). The server
 // enforces the same rules (backend/src/utils/userAccess.ts); this only decides what to show.
 // Tested in userManagement.test.ts.
@@ -27,6 +27,15 @@ export function canDeleteUserAccount(me: Me, target: Target): boolean {
   if (!hasManageUsersRight(me)) return false;
   const targetRoles = rolesOf(target);
   return targetRoles.length > 0 && targetRoles.every((r) => MANAGED_BY_RIGHT_ROLES.includes(r));
+}
+
+/** Is the edit page worth opening for this row? (The server still enforces the rank / department rules.) */
+export function canEditUserAccount(me: Me, target: Target): boolean {
+  if (!me?.id) return false;
+  if (target.id === me.id || isOrgAdmin(me)) return true;
+  const targetRoles = rolesOf(target);
+  if (hasManageUsersRight(me) && targetRoles.length > 0 && targetRoles.every((r) => MANAGED_BY_RIGHT_ROLES.includes(r))) return true;
+  return rolesOf(me).some((r) => r === 'DEPARTMENT_HEAD' || r === 'TEAM_LEAD');
 }
 
 /** Roles offered in the create-user form: the usual ones, plus Raiser/Agent/Viewer for a holder of the right. */

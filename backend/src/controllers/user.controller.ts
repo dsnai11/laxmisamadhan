@@ -96,7 +96,7 @@ export const updateUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
   await assertCanManageUser(actor, req.params.id, { allowSelf: true });
   if (req.body.role) assertCanAssignRole(actor, req.body.role);
   if (req.body.roles) assertCanAssignRole(actor, req.body.roles);
-  if (!isOrgWide(actor) && req.body.departmentId !== undefined && req.body.departmentId !== actor.departmentId) {
+  if (!isOrgWide(actor) && !hasUserMgmtRight(actor) && req.body.departmentId !== undefined && req.body.departmentId !== actor.departmentId) {
     throw new AppError('You can only keep users in your own department', 403, 'FORBIDDEN');
   }
   if (req.body.canViewTeamBucket !== undefined) {

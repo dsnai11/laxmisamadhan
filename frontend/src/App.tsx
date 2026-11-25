@@ -213,6 +213,7 @@ function AppRoutes() {
         <Route path="knowledge" element={<RaiserKnowledgeBase />} />
         <Route path="profile" element={<RaiserProfile />} />
         <Route path="users" element={<ManageUsersRoute><AdminUsers /></ManageUsersRoute>} />
+        <Route path="users/:id" element={<ManageUsersRoute><AdminUserDetail /></ManageUsersRoute>} />
       </Route>
 
       {/* Agent routes */}
@@ -232,6 +233,7 @@ function AppRoutes() {
         <Route path="sla" element={<AdminSLAPolicies />} />
         <Route path="knowledge" element={<AgentKnowledgeBase />} />
         <Route path="users" element={<ManageUsersRoute><AdminUsers /></ManageUsersRoute>} />
+        <Route path="users/:id" element={<ManageUsersRoute><AdminUserDetail /></ManageUsersRoute>} />
       </Route>
 
       {/* Main redirect based on role */}

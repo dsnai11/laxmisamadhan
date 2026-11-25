@@ -53,3 +53,20 @@ describe('Users page access', () => {
     expect(canOpenUsersPage({ role: 'RAISER' })).toBe(false);
   });
 });
+
+import { canEditUserAccount } from './userManagement';
+
+describe('canEditUserAccount — which rows open the edit page', () => {
+  it('a holder opens Raiser / Agent / Viewer rows, not senior ones', () => {
+    for (const r of ['RAISER', 'AGENT', 'VIEWER']) expect(canEditUserAccount(holder, { id: 'x', role: r, roles: [r] })).toBe(true);
+    for (const r of ['ADMIN', 'SUPER_ADMIN']) expect(canEditUserAccount(holder, { id: 'x', role: r, roles: [r] })).toBe(false);
+  });
+  it('everyone can open their own page; admins open any; a plain agent opens nobody else', () => {
+    expect(canEditUserAccount(plainAgent, { id: 'a', role: 'AGENT' })).toBe(true);
+    expect(canEditUserAccount({ id: 'ad', role: 'ADMIN', roles: ['ADMIN'] }, { id: 'x', role: 'ADMIN' })).toBe(true);
+    expect(canEditUserAccount(plainAgent, { id: 'x', role: 'RAISER', roles: ['RAISER'] })).toBe(false);
+  });
+  it('department heads and team leads keep what they had (the server applies rank / department rules)', () => {
+    expect(canEditUserAccount({ id: 'dh', role: 'DEPARTMENT_HEAD', roles: ['DEPARTMENT_HEAD'] }, { id: 'x', role: 'AGENT' })).toBe(true);
+  });
+});
