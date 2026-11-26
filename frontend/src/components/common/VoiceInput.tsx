@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
 import api from '@services/api';
+import { buildVoiceFile } from '@utils/voiceRecording';
 
 // Check Web Speech API availability
 const getSpeechRecognition = () => {
@@ -338,6 +339,9 @@ export function VoiceMessageRecorder({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<any>(null);
+  const cancelledRef = useRef(false);
+  const onAudioReadyRef = useRef(onAudioReady);
+  onAudioReadyRef.current = onAudioReady;
 
   useEffect(() => {
     return () => {
@@ -368,6 +372,7 @@ export function VoiceMessageRecorder({
       });
 
       chunksRef.current = [];
+      cancelledRef.current = false;
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data);
@@ -375,10 +380,18 @@ export function VoiceMessageRecorder({
       };
 
       recorder.onstop = () => {
-        const audioBlob = new Blob(chunksRef.current, { type: format.mimeType });
-        setRecordedBlob(audioBlob);
-        const url = URL.createObjectURL(audioBlob);
-        setPreviewUrl(url);
+        // Attach straight away: it used to wait for an "Attach" click, and a recording that was
+        // never attached was silently dropped when the ticket was submitted.
+        const voiceFile = cancelledRef.current ? null : buildVoiceFile(chunksRef.current, format);
+        if (cancelledRef.current) {
+          // Discarded by the user: attach nothing.
+        } else if (voiceFile) {
+          onAudioReadyRef.current(voiceFile);
+          toast.success('Voice message attached to ticket!');
+        } else {
+          toast.error('Nothing was recorded. Please try again.');
+        }
+        setRecordingSeconds(0);
 
         // Turn off mic tracks
         if (streamRef.current) {
@@ -421,6 +434,7 @@ export function VoiceMessageRecorder({
   };
 
   const cancelRecording = () => {
+    cancelledRef.current = true;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -550,7 +564,7 @@ export function VoiceMessageRecorder({
             <span className="font-semibold flex items-center gap-1.5">
               <span>🎧 Preview Your Recording ({formatSeconds(recordingSeconds)})</span>
             </span>
-            <span className="text-[11px] text-gray-500">Ready to attach</span>
+            <span className="text-[11px] text-gray-500">Attached</span>
           </div>
 
           <audio controls src={previewUrl} className="w-full h-9" />
