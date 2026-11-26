@@ -18,3 +18,23 @@ describe('voice recording file', () => {
     expect(buildVoiceFile([new Blob([])], fmt)).toBeNull();
   });
 });
+
+import { uploadWithRetry } from './voiceRecording';
+describe('uploadWithRetry', () => {
+  const noWait = async () => {};
+  it('succeeds first time', async () => {
+    let n = 0;
+    expect(await uploadWithRetry(async () => { n++; }, 3, noWait)).toBe(true);
+    expect(n).toBe(1);
+  });
+  it('retries after failures and then succeeds', async () => {
+    let n = 0;
+    expect(await uploadWithRetry(async () => { if (++n < 3) throw new Error('x'); }, 3, noWait)).toBe(true);
+    expect(n).toBe(3);
+  });
+  it('gives up after the attempts and reports failure', async () => {
+    let n = 0;
+    expect(await uploadWithRetry(async () => { n++; throw new Error('x'); }, 3, noWait)).toBe(false);
+    expect(n).toBe(3);
+  });
+});

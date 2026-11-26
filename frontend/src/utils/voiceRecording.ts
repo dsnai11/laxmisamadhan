@@ -13,3 +13,16 @@ export function buildVoiceFile(chunks: Blob[], format: { mimeType: string; ext: 
   if (blob.size === 0) return null;
   return new File([blob], voiceFileName(format.ext, now), { type: format.mimeType, lastModified: now.getTime() });
 }
+
+// Uploads one file, retrying on failure so a brief network drop does not lose an attachment.
+export async function uploadWithRetry(upload: () => Promise<unknown>, attempts = 3, wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<boolean> {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await upload();
+      return true;
+    } catch {
+      if (i < attempts) await wait(800 * i);
+    }
+  }
+  return false;
+}

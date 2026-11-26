@@ -9,6 +9,7 @@ import api from '@services/api';
 import { useAuth } from '@context/AuthContext';
 import { formatDuration, formatFileSize, humanize, isAudioFile } from '@utils/helpers';
 import { CATEGORY_OPTIONS, Field, getErrorMessage, PageHeader, PageLoader, PriorityBadge } from '@components/common/ui';
+import { uploadWithRetry } from '@utils/voiceRecording';
 import { VoiceTypingControl, VoiceMessageRecorder } from '@components/common/VoiceInput';
 import {
   HARDWARE_PRESET_SUB_CATEGORIES,
@@ -32,6 +33,7 @@ export default function CreateTicket() {
   const { user } = useAuth();
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [recordingVoice, setRecordingVoice] = useState(false);
 
   const { data: departments, isLoading } = useQuery({ queryKey: ['departments'], queryFn: () => api.getDepartments() });
 
@@ -113,6 +115,10 @@ export default function CreateTicket() {
   };
 
   const onSubmit = async (values: FormValues) => {
+    if (recordingVoice) {
+      toast.error('A voice message is still recording. Click "Done Recording" first, then submit.');
+      return;
+    }
     setSubmitting(true);
     try {
       const ticket: any = await api.createTicket({
@@ -127,18 +133,17 @@ export default function CreateTicket() {
       const failed: string[] = [];
       const toastId = 'attachment-upload';
       for (const [i, file] of files.entries()) {
-        try {
-          await api.uploadAttachment(ticket.id, file, (percent, name) => {
+        const ok = await uploadWithRetry(() =>
+          api.uploadAttachment(ticket.id, file, (percent, name) => {
             toast.loading(`Uploading ${name}${files.length > 1 ? ` (${i + 1} of ${files.length})` : ''}… ${percent}%`, { id: toastId });
-          });
-        } catch {
-          failed.push(file.name);
-        }
+          }),
+        );
+        if (!ok) failed.push(file.name);
       }
       toast.dismiss(toastId);
 
       toast.success(`Ticket ${ticket.ticketNumber} created successfully!`);
-      if (failed.length) toast.error(`Could not upload: ${failed.join(', ')}.`);
+      if (failed.length) toast.error(`Ticket created, but these files did NOT upload: ${failed.join(', ')}. Open the ticket and use "Add file" to add them.`, { duration: 15000 });
       navigate(`/raiser/tickets/${ticket.id}`);
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -261,6 +266,7 @@ export default function CreateTicket() {
         {/* Voice Message Recorder (Audio Note) */}
         <VoiceMessageRecorder
           disabled={submitting}
+          onRecordingChange={setRecordingVoice}
           attachedVoiceFiles={files.filter((f) => isAudioFile(f.type, f.name))}
           onAudioReady={(audioFile) => {
             setFiles((prev) => [...prev, audioFile].slice(0, 10));

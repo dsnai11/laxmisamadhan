@@ -318,6 +318,8 @@ interface VoiceMessageRecorderProps {
   onAudioRemoved?: (fileName: string) => void;
   attachedVoiceFiles?: File[];
   disabled?: boolean;
+  /** Tells the form when a recording is in progress so it can refuse to submit mid-recording. */
+  onRecordingChange?: (recording: boolean) => void;
 }
 
 export function VoiceMessageRecorder({
@@ -325,8 +327,12 @@ export function VoiceMessageRecorder({
   onAudioRemoved,
   attachedVoiceFiles = [],
   disabled,
+  onRecordingChange,
 }: VoiceMessageRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
+  useEffect(() => {
+    onRecordingChange?.(isRecording);
+  }, [isRecording]); // eslint-disable-line react-hooks/exhaustive-deps
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
