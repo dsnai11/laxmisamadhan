@@ -6,6 +6,7 @@ import emailService from './email.service';
 import config from '@config/index';
 import { UserRole, UserStatus, Prisma } from '@prisma/client';
 import { getPrimaryRole } from '@utils/userAccess';
+import { resolveDepartmentName } from '@utils/userDepartment';
 
 const logger = createLogger('user-service');
 
@@ -74,7 +75,7 @@ interface UserQueryParams {
 
 interface CreateUserOptions {
   cachedPasswordHash?: string;
-  deptCache?: Map<string, string>;
+  deptList?: { id: string; name: string }[];
   skipActivityLog?: boolean;
 }
 
@@ -113,32 +114,21 @@ class UserService {
       lastName = '-';
     }
 
-    // Resolve Department: by ID or by Name
+    // Resolve Department: by ID, or by NAME against existing departments only. A name never
+    // creates a department (see utils/userDepartment.ts); unknown names are kept as text.
     let departmentId = data.departmentId || null;
+    let raiserDepartmentName: string | null = null;
     if (!departmentId && data.departmentName && data.departmentName.trim()) {
-      const dName = data.departmentName.trim();
-      const normKey = dName.toLowerCase();
-      if (options?.deptCache && options.deptCache.has(normKey)) {
-        departmentId = options.deptCache.get(normKey) || null;
-      } else {
-        let dept = await prisma.department.findFirst({
-          where: { name: { equals: dName, mode: 'insensitive' } },
-        });
-        if (!dept) {
-          dept = await prisma.department.create({
-            data: { name: dName },
-          });
-        }
-        departmentId = dept.id;
-        if (options?.deptCache) {
-          options.deptCache.set(normKey, dept.id);
-        }
-      }
+      const departments = options?.deptList || (await prisma.department.findMany({ select: { id: true, name: true } }));
+      if (options && !options.deptList) options.deptList = departments;
+      const resolved = resolveDepartmentName(data.departmentName, departments);
+      departmentId = resolved.departmentId;
+      raiserDepartmentName = resolved.raiserDepartmentName;
     }
 
     const jobTitle = (data.jobTitle || data.designations || data.desginations || '').trim() || null;
-    const departmentRaiserName = (data.departmentRaiserName || '').trim() || null;
-    const reportingManagerName = (data.reportingManagerName || departmentRaiserName || '').trim() || null;
+    const departmentRaiserName = (data.departmentRaiserName || '').trim() || raiserDepartmentName;
+    const reportingManagerName = (data.reportingManagerName || (data.departmentRaiserName || '')).trim() || null;
     const branch = (data.branch || '').trim() || null;
     const state = (data.state || '').trim() || null;
     const phone = (data.phone || data.mobile || '').trim() || null;
@@ -225,7 +215,7 @@ class UserService {
   async bulkCreateUsers(usersData: CreateUserData[], createdById: string): Promise<{ success: number; failed: number; users: any[]; errors: any[] }> {
     const results = { success: 0, failed: 0, users: [] as any[], errors: [] as any[] };
     const passwordHashMap = new Map<string, string>();
-    const deptCache = new Map<string, string>();
+    const deptList = await prisma.department.findMany({ select: { id: true, name: true } });
     const seenEmpIds = new Set<string>();
 
     for (const userData of usersData) {
@@ -248,7 +238,7 @@ class UserService {
         userData.sendWelcomeEmail = false;
         const user = await this.createUser(userData, createdById, {
           cachedPasswordHash,
-          deptCache,
+          deptList,
           skipActivityLog: true,
         });
         results.success++;

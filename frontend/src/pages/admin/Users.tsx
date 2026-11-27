@@ -494,7 +494,7 @@ export default function AdminUsers() {
                       <td className="text-sm text-gray-600 dark:text-slate-300">
                         <div>{u.department?.name || '-'}</div>
                         {u.departmentRaiserName && (
-                          <div className="text-[11px] text-gray-400 dark:text-slate-500">Raiser: {u.departmentRaiserName}</div>
+                          <div className="text-[11px] text-gray-400 dark:text-slate-500">Raiser dept: {u.departmentRaiserName}</div>
                         )}
                       </td>
                       {/* Team Bucket Access Toggle Column */}
